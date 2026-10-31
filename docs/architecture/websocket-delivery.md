@@ -62,12 +62,23 @@ clients. Future multiple instances require per-instance groups or an approved fa
 per-instance groups are preferred over adding new infrastructure, with explicit group cleanup and
 replay policy. This stage does not deploy replicas or create groups.
 
+Propose enable_auto_commit=false and auto_offset_reset=latest for this ephemeral Kitchen hint
+consumer. A valid committed group position is resumed; latest applies only when no valid position
+exists. It is not a command to discard backlog on each restart. Readiness requires topic partition
+assignment and initialized positions, not merely a successful consumer.start call. In the initial
+single-instance deployment, the assignment must cover the topic's partitions; accidental shared-
+group partition splitting must fail readiness rather than claim full kitchen coverage. Reset after
+expired offsets or reassignment closes existing clients, logs the boundary and requires a fresh
+ready/REST reconciliation. REST supplies current state, so historical hint replay is not required.
+
 Validate event schema/type/version before broadcasting. Invalid events alert and stop consumption
 pending reviewed quarantine/recovery policy; do not loop silently or expose malformed contents.
-After a valid event is enqueued (or no staff are connected), commit its Kafka offset. A process
-crash may lose queued hints; disconnected clients restore state via REST. That is an explicit
-best-effort notification contract, not durable end-user delivery. New instances use a documented
-consumer start-offset policy and never treat the consumer offset as the browser's state cursor.
+After a valid event is enqueued (or no staff are connected), manually commit the next offset
+for the processed contiguous prefix of that partition. Process sequentially per partition initially;
+never commit a fetched-but-unprocessed position past a failed validation/enqueue. A process crash
+may lose queued hints; disconnected clients restore state via REST. That is an explicit best-effort
+notification contract, not durable end-user delivery. Commit failure/revocation may replay hints;
+duplicates remain harmless. Never treat a consumer offset as the browser's state cursor.
 
 Propose at most 128 queued hints per authenticated connection. Coalesce queued hints for the same
 order by version where possible; on overflow close that client with 1013 rather than blocking the
@@ -138,7 +149,9 @@ by completing this design task.
 - Reconnect after consumer/service/browser restart resubscribes and fetches REST; no browser
   resume/exactly-once claim. Lost hints are corrected on periodic/focus refresh.
 - Slow-client queue overflow closes only that connection; memory and consumer progress stay bounded.
-- Kafka outage invalidates live state; recovery creates a fresh ready+reconcile cycle.
+- Kafka outage invalidates live state; recovery creates a fresh ready+reconcile cycle. Tests cover
+  fresh groups starting at latest, valid committed-offset resume, retention-expired offsets, failed
+  earlier messages preventing later offset commits, and assignment readiness before ready.
 - An expiration close returns to staff login without an infinite reconnect loop; logs contain no JWT.
 - Tests with two future instances prove broadcast semantics; a shared-group negative test exposes
   partition splitting rather than accepting it as fan-out.
@@ -152,6 +165,7 @@ rate and time-to-reconciled-view; tune thresholds from measurements before produ
 
 Official sources checked 2026-10-31: [WHATWG browser WebSocket interface](https://websockets.spec.whatwg.org/),
 [FastAPI WebSocket dependencies/lifecycle](https://fastapi.tiangolo.com/advanced/websockets/),
-[Kafka consumer design](https://kafka.apache.org/41/design/design/).
+[Kafka consumer design](https://kafka.apache.org/41/design/design/),
+[aiokafka offsets/assignment behavior](https://aiokafka.readthedocs.io/en/stable/consumer.html).
 The proposed auth messages, bounds and reconciliation algorithm are project design recommendations,
 not defaults supplied or guaranteed by those libraries.
