@@ -34,7 +34,7 @@ proposals until explicitly approved. No new public API or JSON Schema is committ
 | Topic durability/replay | Proposed orders.events.v1, seven-day delete retention, separate groups; production partitions/replication/ACLs not approved | Owner operations decision; reconcile with Notification recovery window |
 | Notification durable state | Existing service has no DB adapter; persistent inbox/retries/dedup are required before offset commits | SCRUM-14 preview 10028 recommends a service-owned PostgreSQL inbox/delivery store over Kafka state/retry topics; owner approval still required |
 | User → Notification recipient | Existing User /me is own-user Bearer API, not a machine lookup by event user_id | New narrowly authorized service interface/permission state must be proposed and reviewed; no direct DB reads or borrowed client JWT |
-| Notification freshness | Duplicate/late/gap handling and READY followed by terminal/cancel before dispatch | Preview 10028 proposes monotonic watermark and stale READY suppression; safety boundary acknowledged in 10032, owner decision pending |
+| Notification freshness | Duplicate/late/gap handling and READY followed by COMPLETED before dispatch | Preview 10028 proposes monotonic watermark and stale READY suppression; safety boundary acknowledged in 10032, owner decision pending |
 | Bot → permission state | Existing verified Telegram identity does not establish a durable message-permission lifecycle | SCRUM-14 proposes trusted evidence, ownership, blocked/revoked behavior and recovery |
 | Kafka → kitchen | Independent kitchen group; shared group cannot broadcast every event to every replica | SCRUM-15 singleton proposal; replicas require fan-out/offset policy review |
 | Browser → kitchen WebSocket | Proposed exact-origin check, first-frame staff JWT, bounded pre-auth transport, expiry close; no token in URL | SCRUM-15; SCRUM-16 READBACK plus owner approval required |
@@ -57,6 +57,12 @@ and atomic watermark/pending-delivery updates. It also accepted the last eligibi
 claim/lease-expiry treatment and the limits of unconsumed terminal events and network-send races.
 These are agreed design constraints; the actual consumer document and implementation remain
 unverified until the corresponding PR and later runtime acceptance checks exist.
+
+The approved lifecycle allows READY -> COMPLETED, not READY -> CANCELLED. Cancellation is
+limited to PENDING/PREPARING under the confirmed role/cutoff policy. A READY/CANCELLED branch
+conflict for the same order is inconsistent history or a future-policy proposal, not permission to
+add a transition. Same aggregate/version with incompatible state must be diagnosed as a conflict;
+late copies must not resurrect a terminal order.
 
 Before recommending stale READY suppression, identify how current order state is obtained. Existing
 Order REST accepts end-user/staff JWT roles; an event contains no authority to call it. A consumer
