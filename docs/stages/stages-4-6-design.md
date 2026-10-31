@@ -9,7 +9,7 @@ This is the coordinator-owned integration register; individual owners keep their
 | Task | Owner / exclusive file | Published design / current evidence |
 | --- | --- | --- |
 | SCRUM-13 Outbox | kirill_bel; docs/architecture/event-publication.md | [PR #2](https://github.com/KirillBelianskiy/mai-stolovka/pull/2), head 7adf583; [green CI](https://github.com/KirillBelianskiy/mai-stolovka/actions/runs/41200871126) |
-| SCRUM-14 Notification | bobr2610; docs/architecture/notification-delivery.md | Setup and producer READBACK [comment 10021](https://belianskiykirill-1793393094981.atlassian.net/browse/SCRUM-14?focusedCommentId=10021); design PR not yet observed |
+| SCRUM-14 Notification | bobr2610; docs/architecture/notification-delivery.md | Setup/producer READBACK 10021 and notification preview [10028](https://belianskiykirill-1793393094981.atlassian.net/browse/SCRUM-14?focusedCommentId=10028); design PR not yet observed |
 | SCRUM-15 WebSocket | kirill_bel; docs/architecture/websocket-delivery.md | [PR #3](https://github.com/KirillBelianskiy/mai-stolovka/pull/3), head 4e7c20c; [green CI](https://github.com/KirillBelianskiy/mai-stolovka/actions/runs/41193987634) |
 | SCRUM-16 Frontends | bobr2610; docs/architecture/frontend-integration.md | Assigned separately; branch-start ACK and design PR not yet observed |
 
@@ -32,9 +32,9 @@ proposals until explicitly approved. No new public API or JSON Schema is committ
 | Producer → Notification | Order UUID key; unchanged v1; at-least-once duplicates/late versions; durable consumer responsibility before offset commit | Peer-readback in SCRUM-14 comment 10021; consumer design details and owner gates pending |
 | Relay availability | Proposed single worker, PG session advisory guard, no broker I/O in business transactions, pending-event retry before intentional later-version progression | SCRUM-13 proposal; owner must accept availability/poison/deadline tradeoffs |
 | Topic durability/replay | Proposed orders.events.v1, seven-day delete retention, separate groups; production partitions/replication/ACLs not approved | Owner operations decision; reconcile with Notification recovery window |
-| Notification durable state | Existing service has no DB adapter; persistent inbox/retries/dedup are required before offset commits | SCRUM-14 recommends store/recovery design; new DB/topic infrastructure needs explicit owner approval |
+| Notification durable state | Existing service has no DB adapter; persistent inbox/retries/dedup are required before offset commits | SCRUM-14 preview 10028 recommends a service-owned PostgreSQL inbox/delivery store over Kafka state/retry topics; owner approval still required |
 | User → Notification recipient | Existing User /me is own-user Bearer API, not a machine lookup by event user_id | New narrowly authorized service interface/permission state must be proposed and reviewed; no direct DB reads or borrowed client JWT |
-| Notification freshness | Duplicate/late/gap handling and READY followed by terminal/cancel before dispatch | SCRUM-14 proposal; user-visible suppression/late-notification policy requires owner decision |
+| Notification freshness | Duplicate/late/gap handling and READY followed by terminal/cancel before dispatch | Preview 10028 proposes monotonic watermark and stale READY suppression; precise dispatch boundary and owner decision pending |
 | Bot → permission state | Existing verified Telegram identity does not establish a durable message-permission lifecycle | SCRUM-14 proposes trusted evidence, ownership, blocked/revoked behavior and recovery |
 | Kafka → kitchen | Independent kitchen group; shared group cannot broadcast every event to every replica | SCRUM-15 singleton proposal; replicas require fan-out/offset policy review |
 | Browser → kitchen WebSocket | Proposed exact-origin check, first-frame staff JWT, bounded pre-auth transport, expiry close; no token in URL | SCRUM-15; SCRUM-16 READBACK plus owner approval required |
