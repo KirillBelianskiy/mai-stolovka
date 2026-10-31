@@ -1,0 +1,16 @@
+{
+  "event_id": "12345678-1234-4234-8234-123456789002",
+  "event_type": "ORDER_STATUS_UPDATED",
+  "event_version": 1,
+  "occurred_at": "2026-10-30T09:00:00Z",
+  "aggregate_id": "12345678-1234-4234-8234-123456789100",
+  "payload": {
+    "order_number": "MAI-000001",
+    "user_id": "12345678-1234-4234-8234-123456789200",
+    "slot_id": "12345678-1234-4234-8234-123456789300",
+    "status": "READY",
+    "total_amount": 22000,
+    "order_version": 3,
+    "previous_status": "PREPARING"
+  }
+}

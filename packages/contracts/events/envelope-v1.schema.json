@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mai-food:events:envelope:1",
+  "title": "MAI Food domain event envelope v1",
+  "description": "Version 1 order events. Payloads finalized in Stage 3; no deployed consumers predate this contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_type",
+    "event_version",
+    "occurred_at",
+    "aggregate_id",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "ORDER_CREATED",
+        "ORDER_STATUS_UPDATED",
+        "ORDER_CANCELLED"
+      ]
+    },
+    "event_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "aggregate_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "order_number",
+        "user_id",
+        "slot_id",
+        "status",
+        "total_amount",
+        "order_version"
+      ],
+      "properties": {
+        "order_number": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "user_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "slot_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "status": {
+          "enum": [
+            "PENDING",
+            "PREPARING",
+            "READY",
+            "COMPLETED",
+            "CANCELLED"
+          ]
+        },
+        "total_amount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "order_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "previous_status": {
+          "enum": [
+            "PENDING",
+            "PREPARING",
+            "READY"
+          ]
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "ORDER_CREATED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "properties": {
+              "status": {
+                "const": "PENDING"
+              },
+              "order_version": {
+                "const": 1
+              }
+            },
+            "not": {
+              "required": [
+                "previous_status"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "ORDER_STATUS_UPDATED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "required": [
+              "previous_status"
+            ],
+            "properties": {
+              "order_version": {
+                "minimum": 2
+              }
+            },
+            "oneOf": [
+              {
+                "properties": {
+                  "previous_status": {
+                    "const": "PENDING"
+                  },
+                  "status": {
+                    "const": "PREPARING"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "previous_status": {
+                    "const": "PREPARING"
+                  },
+                  "status": {
+                    "const": "READY"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "previous_status": {
+                    "const": "READY"
+                  },
+                  "status": {
+                    "const": "COMPLETED"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "ORDER_CANCELLED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "required": [
+              "previous_status"
+            ],
+            "properties": {
+              "status": {
+                "const": "CANCELLED"
+              },
+              "previous_status": {
+                "enum": [
+                  "PENDING",
+                  "PREPARING"
+                ]
+              },
+              "order_version": {
+                "minimum": 2
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

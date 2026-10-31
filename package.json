@@ -1,0 +1,15 @@
+{
+  "name": "mai-stolovka",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces",
+    "build": "npm run build --workspaces"
+  }
+}

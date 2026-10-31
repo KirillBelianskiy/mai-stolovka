@@ -1,0 +1,984 @@
+{
+  "components": {
+    "schemas": {
+      "CartLine": {
+        "additionalProperties": false,
+        "properties": {
+          "menu_item_id": {
+            "format": "uuid",
+            "title": "Menu Item Id",
+            "type": "string"
+          },
+          "quantity": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 2147483647.0,
+            "title": "Quantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "menu_item_id",
+          "quantity"
+        ],
+        "title": "CartLine",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Health": {
+        "properties": {
+          "service": {
+            "title": "Service",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service",
+          "status"
+        ],
+        "title": "Health",
+        "type": "object"
+      },
+      "OrderCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_total_amount": {
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Expected Total Amount",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CartLine"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          },
+          "slot_id": {
+            "format": "uuid",
+            "title": "Slot Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot_id",
+          "items",
+          "expected_total_amount"
+        ],
+        "title": "OrderCreate",
+        "type": "object"
+      },
+      "OrderItemRead": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "menu_item_id": {
+            "format": "uuid",
+            "title": "Menu Item Id",
+            "type": "string"
+          },
+          "name_at_moment": {
+            "title": "Name At Moment",
+            "type": "string"
+          },
+          "price_at_moment": {
+            "title": "Price At Moment",
+            "type": "integer"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "menu_item_id",
+          "quantity",
+          "price_at_moment",
+          "name_at_moment"
+        ],
+        "title": "OrderItemRead",
+        "type": "object"
+      },
+      "OrderPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrderRead"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OrderPage",
+        "type": "object"
+      },
+      "OrderRead": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrderItemRead"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "order_number": {
+            "title": "Order Number",
+            "type": "string"
+          },
+          "slot_end_time": {
+            "format": "date-time",
+            "title": "Slot End Time",
+            "type": "string"
+          },
+          "slot_id": {
+            "format": "uuid",
+            "title": "Slot Id",
+            "type": "string"
+          },
+          "slot_start_time": {
+            "format": "date-time",
+            "title": "Slot Start Time",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OrderStatus"
+          },
+          "total_amount": {
+            "title": "Total Amount",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "order_number",
+          "user_id",
+          "slot_id",
+          "slot_start_time",
+          "slot_end_time",
+          "status",
+          "total_amount",
+          "version",
+          "created_at",
+          "updated_at",
+          "items"
+        ],
+        "title": "OrderRead",
+        "type": "object"
+      },
+      "OrderStatus": {
+        "enum": [
+          "PENDING",
+          "PREPARING",
+          "READY",
+          "COMPLETED",
+          "CANCELLED"
+        ],
+        "title": "OrderStatus",
+        "type": "string"
+      },
+      "SlotRead": {
+        "properties": {
+          "capacity": {
+            "title": "Capacity",
+            "type": "integer"
+          },
+          "current_orders": {
+            "title": "Current Orders",
+            "type": "integer"
+          },
+          "end_time": {
+            "format": "date-time",
+            "title": "End Time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "remaining_capacity": {
+            "readOnly": true,
+            "title": "Remaining Capacity",
+            "type": "integer"
+          },
+          "start_time": {
+            "format": "date-time",
+            "title": "Start Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "start_time",
+          "end_time",
+          "capacity",
+          "current_orders",
+          "remaining_capacity"
+        ],
+        "title": "SlotRead",
+        "type": "object"
+      },
+      "SlotWrite": {
+        "additionalProperties": false,
+        "properties": {
+          "capacity": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 2147483647.0,
+            "title": "Capacity",
+            "type": "integer"
+          },
+          "end_time": {
+            "format": "date-time",
+            "title": "End Time",
+            "type": "string"
+          },
+          "start_time": {
+            "format": "date-time",
+            "title": "Start Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start_time",
+          "end_time",
+          "capacity"
+        ],
+        "title": "SlotWrite",
+        "type": "object"
+      },
+      "StatusChange": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "maximum": 2147483647.0,
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OrderStatus"
+          }
+        },
+        "required": [
+          "expected_version",
+          "status"
+        ],
+        "title": "StatusChange",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VersionInput": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "maximum": 2147483647.0,
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "VersionInput",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "MAI Food — Order Service",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "history__get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/OrderStatus"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "slot_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Slot Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "History",
+        "tags": [
+          "orders"
+        ]
+      },
+      "post": {
+        "operationId": "create__post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/health/live": {
+      "get": {
+        "operationId": "live_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Live",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "ready_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ready",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/slots": {
+      "get": {
+        "operationId": "available_slots_slots_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_past",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Past",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SlotRead"
+                  },
+                  "title": "Response Available Slots Slots Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Available Slots",
+        "tags": [
+          "slots"
+        ]
+      },
+      "post": {
+        "operationId": "create_slot_slots_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SlotWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlotRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Slot",
+        "tags": [
+          "slots"
+        ]
+      }
+    },
+    "/slots/{slot_id}": {
+      "delete": {
+        "operationId": "delete_slot_slots__slot_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slot_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Slot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Slot",
+        "tags": [
+          "slots"
+        ]
+      },
+      "put": {
+        "operationId": "update_slot_slots__slot_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slot_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Slot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SlotWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlotRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Slot",
+        "tags": [
+          "slots"
+        ]
+      }
+    },
+    "/{order_id}": {
+      "get": {
+        "operationId": "detail__order_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Detail",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/{order_id}/cancel": {
+      "post": {
+        "operationId": "cancel__order_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancel",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/{order_id}/status": {
+      "patch": {
+        "operationId": "update_status__order_id__status_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatusChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Status",
+        "tags": [
+          "orders"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/api/v1/orders"
+    }
+  ]
+}
