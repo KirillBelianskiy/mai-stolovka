@@ -76,3 +76,9 @@ Neither PR was merged. The generic skill generator remains unchanged.
 
 Subsequent authorization (2026-10-31): publish the completed product snapshot to
 https://github.com/KirillBelianskiy/mai-stolovka.git. Historical local test evidence above is unchanged.
+
+## Follow-up audit
+
+See [SCRUM-11 audit](audit-stage3.md) for source-review findings, post-publication CI evidence,
+Git/skill workflow corrections, and checks performed during the audit. Original results above
+remain historical evidence of the initial Stage 3 implementation.
