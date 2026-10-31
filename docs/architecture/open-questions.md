@@ -38,3 +38,10 @@ These are explicit follow-up decisions. Nothing in the placeholder UI answers th
 4. Integrate both frontends with existing User/Menu/Order contracts and explicit price confirmation.
 
 Five-person ownership is suggested in the overview. A feature is not complete merely because its happy-path UI exists; its owning service must enforce its invariants and authorization.
+
+## Current design review
+
+Stages 4–6 are design-only under SCRUM-12. The [integration register](../stages/stages-4-6-design.md)
+tracks peer READBACK separately from owner approval and implementation. Notification durable state,
+recipient/permission and service-auth interfaces, stale READY policy, topic operations, WebSocket
+auth/protocol and frontend credential/recovery choices remain proposal gates until explicitly resolved.

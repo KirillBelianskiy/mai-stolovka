@@ -3,6 +3,9 @@
 Status: Stage 3. User/Menu APIs and transactional Order/slot/lifecycle/Outbox persistence are implemented.
 Kafka delivery, Notification/WebSocket processing and frontend flows remain deferred.
 See [authentication](authentication.md) and [Stage 3](../stages/stage-3.md).
+Stages 4–6 are being designed in two independent machine chats; see the
+[design integration register](../stages/stages-4-6-design.md) for owners, proposals and review gates.
+Design progress does not change the implemented runtime status above.
 
 ## Components and trust boundaries
 
