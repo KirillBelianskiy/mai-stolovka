@@ -1,6 +1,7 @@
 # Stage 4 Outbox publication design — SCRUM-13
 
-Status: proposed design for owner and SCRUM-14 consumer review, 2026-10-31. No relay, migration,
+Status: proposed design, 2026-10-31. SCRUM-14 accepted the producer boundary in Jira comment
+10021; notification design details and final owner approval remain pending. No relay, migration,
 topic or runtime configuration is implemented by this document. Owner: kirill_bel. Product baseline:
 4fb6886. Coordination: SCRUM-12; notification counterpart: SCRUM-14 (bobr2610).
 
@@ -134,5 +135,9 @@ Official sources checked 2026-10-31: [Kafka delivery/consumer design](https://ka
 [aiokafka producer semantics](https://aiokafka.readthedocs.io/en/stable/producer.html),
 [PostgreSQL session advisory locks](https://www.postgresql.org/docs/18/explicit-locking.html).
 Kafka 4.1 design is used for stable delivery concepts; installed local Kafka is 4.4.0 and its exact
-configuration compatibility must be checked before implementation. Counterpart agreement and owner
-approval are pending; this proposal alone does not establish a final consumer contract.
+configuration compatibility must be checked before implementation. Counterpart READBACK [SCRUM-14 comment 10021](https://belianskiykirill-1793393094981.atlassian.net/browse/SCRUM-14?focusedCommentId=10021)
+accepted this producer boundary at draft 18fdc21: v1 envelope, stable IDs/versions, key, at-least-once
+delivery and durable consumer responsibility before offset commit. This update records that
+agreement without changing those semantics. Notification storage/recipient interfaces, stale READY
+delivery policy, retention and final owner approval remain pending; no completed consumer contract
+or implementation is claimed.
