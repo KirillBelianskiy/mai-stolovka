@@ -29,9 +29,13 @@ are proposed protocol choices; the current reserved endpoint continues to reject
    existing fixed RS256 algorithm, issuer/audience, kid, required claims, expiry and staff role.
    No private key is distributed. Invalid/missing/CLIENT tokens close with application code 4401
    (unauthenticated) or 4403 (forbidden); never echo credentials or log frame bodies.
-4. Register the authenticated client in the live hub before sending
-   {"type":"ready","protocol_version":1,"connection_id":"<UUID>"}. Kafka consumer initialization
-   must be complete; otherwise close 1013 for temporary unavailability. The connection ID is
+4. Establish the subscription and queue
+   {"type":"ready","protocol_version":1,"connection_id":"<UUID>"} as one ordered hub operation.
+   Queue ready before making the authenticated connection visible to broadcasts; do not await
+   network I/O in that registration operation. One writer per connection drains the outbound
+   queue, so ready is always the first application response and later hints cannot overtake it.
+   The subscription exists before ready reaches the browser. Kafka consumer initialization must
+   already be complete; otherwise close 1013 for temporary unavailability. The connection ID is
    diagnostic only, not a replay cursor, authorization credential or durable session.
 5. A validated domain event produces a hint such as
    {"type":"orders.changed","event_id":"<UUID>","order_id":"<UUID>",
@@ -127,6 +131,8 @@ by completing this design task.
 - Reject bad origin, absent/expired/wrong-signature/wrong-audience/CLIENT credentials; send no
   hints before auth; close idle unauthenticated sessions and active expired-token sessions.
 - Staff roles receive hints but their REST mutations still enforce the existing role matrix.
+- Broadcasts racing with registration cannot precede ready or be lost between subscription and
+  ready. Exactly one socket writer preserves queue order; no hub lock spans network I/O.
 - Events before/during/after REST fetch and status-filter membership changes eventually converge;
   old/duplicate/out-of-order versions do not roll a record backward.
 - Reconnect after consumer/service/browser restart resubscribes and fetches REST; no browser
