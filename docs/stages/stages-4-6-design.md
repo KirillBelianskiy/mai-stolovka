@@ -10,7 +10,7 @@ This is the coordinator-owned integration register; individual owners keep their
 | --- | --- | --- |
 | SCRUM-13 Outbox | kirill_bel; docs/architecture/event-publication.md | [PR #2](https://github.com/KirillBelianskiy/mai-stolovka/pull/2), head 7adf583; [green CI](https://github.com/KirillBelianskiy/mai-stolovka/actions/runs/41200871126) |
 | SCRUM-14 Notification | bobr2610; docs/architecture/notification-delivery.md | Setup/producer READBACK 10021, preview 10028 and safety READBACK [10032](https://belianskiykirill-1793393094981.atlassian.net/browse/SCRUM-14?focusedCommentId=10032); design PR not yet observed |
-| SCRUM-15 WebSocket | kirill_bel; docs/architecture/websocket-delivery.md | [PR #3](https://github.com/KirillBelianskiy/mai-stolovka/pull/3), head 4e7c20c; [green CI](https://github.com/KirillBelianskiy/mai-stolovka/actions/runs/41193987634) |
+| SCRUM-15 WebSocket | kirill_bel; docs/architecture/websocket-delivery.md | [PR #3](https://github.com/KirillBelianskiy/mai-stolovka/pull/3), head 095d51e; [green CI](https://github.com/KirillBelianskiy/mai-stolovka/actions/runs/41203370408) |
 | SCRUM-16 Frontends | bobr2610; docs/architecture/frontend-integration.md | Assigned separately; branch-start ACK and design PR not yet observed |
 
 These review documents live on separate branches from main. A missing local file on one branch
@@ -36,9 +36,9 @@ proposals until explicitly approved. No new public API or JSON Schema is committ
 | User → Notification recipient | Existing User /me is own-user Bearer API, not a machine lookup by event user_id | New narrowly authorized service interface/permission state must be proposed and reviewed; no direct DB reads or borrowed client JWT |
 | Notification freshness | Duplicate/late/gap handling and READY followed by COMPLETED before dispatch | Preview 10028 proposes monotonic watermark and stale READY suppression; safety boundary acknowledged in 10032, owner decision pending |
 | Bot → permission state | Existing verified Telegram identity does not establish a durable message-permission lifecycle | SCRUM-14 proposes trusted evidence, ownership, blocked/revoked behavior and recovery |
-| Kafka → kitchen | Independent kitchen group; shared group cannot broadcast every event to every replica | SCRUM-15 singleton proposal; replicas require fan-out/offset policy review |
+| Kafka → kitchen | Independent kitchen group; manual contiguous commits, valid-offset resume and proposed latest reset only without a valid position; partition assignment before readiness | SCRUM-15 singleton proposal; replicas require fan-out/offset policy review |
 | Browser → kitchen WebSocket | Proposed exact-origin check, first-frame staff JWT, bounded pre-auth transport, expiry close; no token in URL | SCRUM-15; SCRUM-16 READBACK plus owner approval required |
-| Kitchen WebSocket → UI | Proposed ready and minimal orders.changed invalidations, bounded queues, reconnect + subscribe-before-REST | SCRUM-15/16 must reconcile exact messages/limits before schema publication |
+| Kitchen WebSocket → UI | Proposed ready queued before broadcast visibility with one socket writer, minimal orders.changed hints, bounded queues and subscribe-before-REST recovery | SCRUM-15/16 must reconcile exact messages/limits before schema publication |
 | Browser state/credentials | Static exports and existing access-token APIs; no refresh/session endpoint exists | SCRUM-16 proposes storage/expiry UX and separation of Query server state vs local cart; owner gates for new auth contracts |
 | Changed total / uncertain POST | Existing expected_total_amount conflict and UUID-key original-response replay | SCRUM-16 uses existing semantics; no automatic acceptance of changed price or duplicate new intent |
 
