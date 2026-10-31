@@ -26,7 +26,8 @@ jobs:
         with:
           version: '0.9.5'
       - run: uv sync --frozen
-      - run: uv run --frozen ruff check .
+      - name: Ruff lint (including PEP 8 errors and warnings)
+        run: uv run --frozen ruff check .
       - run: uv run --frozen ruff format --check .
       - run: uv run --frozen mypy src
       - run: uv run --frozen pytest
@@ -57,7 +58,9 @@ jobs:
         with:
           version: '0.9.5'
       - run: uv sync --frozen
-      - run: uv run --frozen ruff check infra tests
+      - name: Ruff lint (including PEP 8 errors and warnings)
+        run: uv run --frozen ruff check infra tests
+      - run: uv run --frozen ruff format --check infra tests
       - run: uv run --frozen python -m unittest discover -s tests/contracts -v
 
   integration:
