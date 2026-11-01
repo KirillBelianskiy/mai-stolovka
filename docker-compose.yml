@@ -83,6 +83,24 @@ services:
       postgres:
         condition: service_healthy
 
+  outbox-worker:
+    profiles: [outbox]
+    build: ./services/order-service
+    command: ["/app/.venv/bin/python", "-m", "order_service.outbox"]
+    environment:
+      APP_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      APP_DATABASE_URL: postgresql+asyncpg://orders_owner:${ORDERS_DB_PASSWORD:?Set ORDERS_DB_PASSWORD in .env}@postgres:5432/orders_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    # The HTTP image's readiness probe does not describe the standalone worker.
+    healthcheck:
+      disable: true
+    restart: "no"
+    stop_grace_period: 60s
+
   notification-service:
     build: ./services/notification-service
     environment:

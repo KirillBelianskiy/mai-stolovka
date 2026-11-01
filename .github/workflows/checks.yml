@@ -31,6 +31,12 @@ jobs:
       - run: uv run --frozen mypy src
       - run: uv run --frozen pytest
       - run: docker build -t mai-${{ matrix.service }}:ci .
+      - name: Verify standalone Outbox runtime and bundled schema
+        if: matrix.service == 'order-service'
+        run: >-
+          docker run --rm --entrypoint /app/.venv/bin/python mai-order-service:ci
+          -c 'import order_service.outbox; import json; from importlib.resources import files;
+          assert json.loads(files("order_service").joinpath("resources/events-v1.json").read_text())["$id"] == "urn:mai-food:events:envelope:1"'
 
   frontend:
     runs-on: ubuntu-latest

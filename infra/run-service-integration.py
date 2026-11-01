@@ -56,6 +56,10 @@ def main() -> None:
             environment = os.environ.copy()
             url = f"postgresql+asyncpg://{owner}:{values[password_key]}@{address}/{name}"
             environment.update(APP_DATABASE_URL=url, MAI_TEST_DATABASE_URL=url)
+            if service == "order":
+                environment["MAI_TEST_KAFKA_BOOTSTRAP_SERVERS"] = compose(
+                    "port", "kafka", "9092"
+                ).stdout.strip()
             directory = ROOT / "services" / f"{service}-service"
             binaries = directory / ".venv" / ("Scripts" if os.name == "nt" else "bin")
             subprocess.run(

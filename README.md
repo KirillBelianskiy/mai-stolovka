@@ -90,7 +90,9 @@ scripts run only on the first empty PostgreSQL volume. Editing `.env` after init
 rotate existing database passwords. Rotate them in PostgreSQL explicitly if data must be preserved.
 
 Kafka's plaintext, single-node configuration and the bootstrap DB administrator are local-only.
-No Kafka producers, consumers, or workers are started. Order Service persists events in PostgreSQL. Telegram access
+No Kafka consumers or workers are started by the default stack. Order Service persists events in
+PostgreSQL; the explicit opt-in Outbox worker can publish them after topic provisioning. Read
+[the worker instructions](docs/stages/stage-4-outbox.md) before launch. Telegram access
 will require an HTTPS-accessible deployment and bot interaction permissions in a later stage.
 
 ## Backend development and checks
