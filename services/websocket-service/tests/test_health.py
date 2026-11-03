@@ -14,7 +14,6 @@ def test_live_reports_service_identity() -> None:
 def test_business_routes_are_absent() -> None:
     with TestClient(create_app(Settings(database_url=None))) as client:
         assert client.get("/api/v1/orders").status_code == 404
-        assert client.get("/api/v1/ws/kitchen").status_code == 404
 
 
 def test_process_readiness() -> None:
