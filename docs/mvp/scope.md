@@ -34,10 +34,12 @@ Terminal orders cannot be reopened. Integer kopecks, server totals, expected ver
 stable per-user idempotency keys remain required. Payment adds no implicit permission to
 change these rules. New payment transitions must be reviewed before runtime edits.
 
-## Demonstration payment proposal
+## Owner-approved demonstration payment scheme
 
-The owner approved the feature, not the following implementation choices. Record approval in
-[the decision register](decision-register.md) before changing schemas or APIs.
+The owner explicitly approved this scheme on 2026-11-03 after reviewing PR #34.
+The decision is recorded in [the decision register](decision-register.md); backend implementation
+is in [PR #36](https://github.com/KirillBelianskiy/mai-stolovka/pull/36).
+Its transaction/security defaults and verification evidence are documented in that implementation.
 
 - Keep a demo-only wallet/immutable ledger in Order Service's database, with no sixth service,
   new infrastructure or direct access to User/Menu databases. User UUID is an external reference.
@@ -45,9 +47,8 @@ The owner approved the feature, not the following implementation choices. Record
   setting. Require a positive bounded integer amount and an idempotency key; never a public
   arbitrary-balance setter. Label API/UI credits and payments as demonstrations.
 - Debit the authenticated client's balance in the same transaction as order creation, capacity,
-  idempotency and Outbox writes. Insufficient funds creates no order/reservation/debit. This
-  proposes payment at checkout; a separately created unpaid order is an alternative requiring
-  expiry/reservation policy and extra states.
+  idempotency and Outbox writes. Insufficient funds creates no order/reservation/debit. Payment at checkout is approved. A separately created unpaid order would require a new
+  decision on expiry/reservation policy and extra states.
 - A successful duplicate checkout replays the original result and never debits twice. Different
   concurrent checkouts serialize wallet access; no negative balances or lost updates. Establish
   and test a consistent wallet/order/slot lock order before implementation.
@@ -61,7 +62,8 @@ The owner approved the feature, not the following implementation choices. Record
 Track the backend/contract in [#32](https://github.com/KirillBelianskiy/mai-stolovka/issues/32)
 and Mini App payment in [#33](https://github.com/KirillBelianskiy/mai-stolovka/issues/33),
 both assigned to KirillBelianskiy. #27/#29 now depend on these payment acceptance results.
-This proposal needs concurrent PostgreSQL tests, rollback injection and contract/security checks.
+The backend implementation includes concurrent PostgreSQL tests, rollback injection and
+contract/security checks; exact results are in PR #36. Mini App integration remains #33.
 Swagger demo credit is an operator tool, not proof of bank settlement. Rollout approval does not
 follow from a passing simulated payment.
 
@@ -103,7 +105,8 @@ usability claim is inferred from the demonstration; volume/recovery objectives r
 
 Inspected product main `4fb68861409fde88e6f0ea98d9cb7d7a61a79c4c`, Stage 2 authentication,
 Stage 3 lifecycle, design-integration PR #4 at `5ffed86`, assigned issues #13–#30, and current
-skill v0011. Payment inclusion comes from the owner's direct chat reply on 2026-11-03; no
-financial provider or new runtime architecture is approved by that reply alone.
+skill v0011. Payment inclusion and the exact Order-owned credit/checkout/refund scheme were explicitly
+approved in the owner's chat replies on 2026-11-03. No provider or unrelated D2–D10 decision
+is approved by those replies.
 This change is documentation only: link/decision coverage and whitespace checks are recorded
 in its PR; payment and end-to-end tests remain unexecuted until implementation.
