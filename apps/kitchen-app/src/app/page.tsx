@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
+import { AdminPanel } from "@/components/admin-panel";
 import {
   apiRequest,
   ApiError,
@@ -253,6 +254,7 @@ export default function Home() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [activeView, setActiveView] = useState<"queue" | "admin">("queue");
 
   const signOut = useCallback((reason = "") => {
     sessionStorage.removeItem(SESSION_KEY);
@@ -261,6 +263,9 @@ export default function Home() {
     setSelected(null);
     setError(reason);
   }, []);
+  const handleAdminUnauthorized = useCallback(() => {
+    signOut("Срок входа истёк. Войдите снова, чтобы продолжить работу.");
+  }, [signOut]);
 
   const loadQueue = useCallback(async (activeSession: StaffSession, quiet = false) => {
     if (!quiet) setLoading(true);
@@ -411,6 +416,7 @@ export default function Home() {
   if (!session) return <LoginPanel message={error} onLogin={login} />;
 
   const isCook = session.user.role === "COOK";
+  const isAdmin = session.user.role === "ADMIN";
   const sections = isCook
     ? [{ title: "В работе", items: grouped.active }]
     : session.user.role === "CASHIER"
@@ -438,6 +444,14 @@ export default function Home() {
         </div>
       </header>
 
+      {isAdmin && (
+        <nav aria-label="Разделы рабочего места" className="view-tabs">
+          <button aria-current={activeView === "queue" ? "page" : undefined} className={activeView === "queue" ? "view-tab active" : "view-tab"} onClick={() => setActiveView("queue")} type="button">Заказы</button>
+          <button aria-current={activeView === "admin" ? "page" : undefined} className={activeView === "admin" ? "view-tab active" : "view-tab"} onClick={() => setActiveView("admin")} type="button">Меню и слоты</button>
+        </nav>
+      )}
+
+      {isAdmin && activeView === "admin" ? <AdminPanel onUnauthorized={handleAdminUnauthorized} session={session} /> : <>
       <section className="queue-header">
         <div>
           <p className="eyebrow">ОЧЕРЕДЬ ЗАКАЗОВ</p>
@@ -516,8 +530,9 @@ export default function Home() {
         </div>
       )}
 
-      <footer className="kitchen-footer"><span>Рабочее место кухни · МСК</span><span>Для помощи обратитесь к администратору</span></footer>
       {selected && <OrderDetails onClose={() => setSelected(null)} order={selected} />}
+      </>}
+      <footer className="kitchen-footer"><span>Рабочее место кухни · МСК</span><span>Для помощи обратитесь к администратору</span></footer>
     </main>
   );
 }
