@@ -1,18 +1,25 @@
 # Stage 4 Outbox operations and monitoring — SCRUM-18
 
 Status: proposal for owner review, 2026-11-03. This document defines an operational design for
-the separately launched SCRUM-17 worker. It does not add metrics, health endpoints, alerts, topic
-configuration, retention, replay tooling, or runtime behavior. Worker implementation reference:
+the separately launched SCRUM-17 worker. SCRUM-18 PR #12 adds development topic provisioning and
+structured diagnostic logs; this document distinguishes those local signals from production
+monitoring, alert routing, and recovery ownership. It does not add runtime behavior. Worker
+implementation reference:
 [SCRUM-17 Outbox worker guide](https://github.com/KirillBelianskiy/mai-stolovka/blob/35915fa6a1f1454a0d5d22c092aaa3822f9a4cbe/docs/stages/stage-4-outbox.md).
-Baseline: product main `4fb6886`; worker reference head `35915fa`.
+Related local diagnostics implementation: [SCRUM-18 PR #12](https://github.com/KirillBelianskiy/mai-stolovka/pull/12),
+head `07f02b6`. The proposal baseline is product main `4fb6886` plus the separately reviewed
+SCRUM-17/#12 behavior; #12 is stacked on #8 and has not merged.
 
 ## Scope and operating assumptions
 
 Order Service persists order changes and Outbox rows in one PostgreSQL transaction. The optional
-SCRUM-17 process publishes pending rows to an explicitly provisioned Kafka topic. It has no consumer
-and no worker-specific readiness endpoint or metrics yet. A Kafka ACK means broker acknowledgment,
-not that Notification, Kitchen, or a person received the event. All thresholds, retention choices,
-on-call ownership, and production targets below are proposals, not approved service objectives.
+worker publishes pending rows to an explicitly provisioned Kafka topic. PR #12 adds periodic
+structured-log samples for pending count/age, process-local attempt/ACK/mark/retry counters, last
+ACK latency, last post-mark success, and Boolean backlog-age/retry-streak indicators. It does not
+add a metrics endpoint, durable counters, external alert routing, disk-capacity monitoring, or
+consumer-lag monitoring. A Kafka ACK means broker acknowledgment, not that Notification, Kitchen,
+or a person received the event. All thresholds, retention choices, on-call ownership, and production
+targets below are proposals, not approved service objectives.
 
 Keep API health independent of relay health: order creation can continue while Kafka is unavailable,
 and the durable backlog will grow. This protects transaction correctness but does not make an
@@ -28,16 +35,20 @@ Identifiers may appear in access-controlled structured logs where needed for one
 
 | Signal | Meaning | Proposed alert / response |
 | --- | --- | --- |
-| Pending row count | Durable unpublished work in `orders_db` | Warn on sustained increase; page only after owner sets a capacity-based threshold |
-| Oldest pending age | Time since the oldest unpublished row's `occurred_at` | Warn at 60 seconds and page at 5 minutes sustained; tune to accepted delivery objective |
-| Publish ACK rate and latency | Broker-acknowledged sends, separated from DB marking | Alert on zero ACKs while pending work exists for 2 minutes; investigate broker/topic/connectivity |
-| Publish retry count and last success | Transient broker or DB failures and recovery progress | Warn after 5 consecutive retries; page when retries persist for 5 minutes |
-| Worker process / guard owner | Process liveness and whether this process holds the session guard | Alert if no expected worker while enabled; if two instances are attempted, investigate instead of bypassing guard |
-| Invalid event / permanent broker error | Poison row, missing topic, authorization or incompatible broker configuration | Immediate stop-and-page; preserve the pending row and diagnose without skipping it |
-| DB mark failures after ACK | Broker may contain an event that remains pending locally | Alert immediately; replay can duplicate, so keep stable event IDs and inspect recovery |
-| PostgreSQL free space / growth | Headroom for orders, idempotency and Outbox records | Warn at 30% free and page at 15% free (provisional); use the platform's volume-capacity signals |
+| Pending row count | PR #12 logs a sampled durable count; it is not a durable metric or trend store | Add external trend/threshold evaluation only after selecting a collector and capacity-based threshold |
+| Oldest pending age | PR #12 logs sampled age and `backlog_alert` at its configured threshold (default 60 seconds) | The Boolean is not a routed alert; proposed warn at 60 seconds and page at 5 minutes sustained, subject to an accepted delivery objective |
+| Publish ACK rate and latency | PR #12 logs process-local ACK totals and last successful ACK latency | No rate window or zero-ACK-duration alert exists; proposed alert after 2 minutes with pending work and no ACK, subject to measurement |
+| Publish retry count and last success | PR #12 logs process-local retries, post-mark last success and `retry_alert` after a continuous retry streak (default 300 seconds) | The Boolean is not a routed alert; configure external notification only after owner selects route and response target |
+| Worker process / guard owner | PR #12 logs guard loss and process termination classes; no independent monitor proves the worker is enabled or alive | Alert if no expected worker while enabled; if two instances are attempted, investigate instead of bypassing guard |
+| Invalid event / permanent broker error | Fatal class is logged and the worker stops with the row pending | Immediate stop-and-page is a proposed external response, not implemented routing |
+| DB mark failures after ACK | Counters can show ACKs exceeding durable marks; no dedicated alert is emitted | Add a discrepancy alert only with a defined sampling window; replay can duplicate, so preserve event IDs |
+| PostgreSQL free space / growth | Not measured by PR #12 worker diagnostics | Proposed warn at 30% free and page at 15% free (provisional); requires platform volume-capacity signals |
+| Consumer lag and replay horizon | Not measured by the producer worker or local topic tool | Consumer owners need independent lag/retention alerts before business delivery is claimed |
 
-Threshold examples are initial review values only. Before production, derive them from the accepted
+PR #12's `backlog_alert` and `retry_alert` fields are diagnostic Booleans in logs; they do not send
+notifications or establish an SLO. Its counters reset on process restart and its backlog query is
+a point-in-time sample separate from publication counters. Threshold examples in this proposal are
+external alert recommendations, not behavior present in #12. Before production, derive them from the accepted
 delivery objective, expected order volume, database headroom, broker performance and a measured
 replay rate. Do not alert on process liveness alone as proof that publication is progressing.
 
