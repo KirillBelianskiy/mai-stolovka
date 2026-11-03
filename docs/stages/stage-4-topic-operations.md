@@ -6,9 +6,11 @@ Full SCRUM-18 acceptance remains incomplete.
 
 ## Backlog and skill reconciliation
 
-GitHub issues #9 and #10 are coordination channels, not the implementation backlog. Issue #9
-contains a connectivity seed. The Windows readback in issue #10 reports consistent designs
-and green SCRUM-17 checks; it does not establish a new execution agreement or Mac ACK.
+The current execution index is [MVP #13](https://github.com/KirillBelianskiy/mai-stolovka/issues/13),
+with this reconciliation tracked in [#15](https://github.com/KirillBelianskiy/mai-stolovka/issues/15).
+Issue #10 is the active coordination channel; #9 is the historical connectivity trial.
+Skill v0010 resumed collaboration: Mac owns this runtime/guide; Bobr owns the separate
+operations proposal and independently reviews the runtime. Skill v0011 assigns the MVP backlog.
 
 [Design integration PR #4](https://github.com/KirillBelianskiy/mai-stolovka/pull/4), head `5ffed86`,
 records the suggested order: SCRUM-22 and 17/18, then 23/24, then 19/20. Frontend foundations
@@ -17,11 +19,48 @@ records the suggested order: SCRUM-22 and 17/18, then 23/24, then 19/20. Fronten
 can start independently of new recipient credentials or Notification storage; consumer durability
 and production operations remain dependencies of the full ticket.
 
-The installed `mai-food-codex-skill` v0009 records this bounded SCRUM-18 continuation, preserving
-v0008 as SCRUM-17 history. The current request does not settle every D1–D10 policy. Retain the
+The installed `mai-food-codex-skill` v0009 records the original bounded SCRUM-18 continuation;
+v0010/v0011 supersede its sequential-only coordination, preserving v0008 as SCRUM-17 history.
+The current request does not settle every D1–D10 policy. Retain the
 service boundaries, test-first workflow and no-merge/deployment rules.
 The local mailbox skill concerns read-only agent dialogue, not application implementation.
 The generic Forge skill is a generator and needs no modification for this work.
+
+## Cross-review for MVP issue #15
+
+Mac reviewed Bobr's [PR #11 at fddd582](https://github.com/KirillBelianskiy/mai-stolovka/blob/fddd582de3a2f9af71d6bfed247e51fe7fd0d75a/docs/stages/stage-4-operations.md)
+against runtime [PR #12 at 07f02b6](https://github.com/KirillBelianskiy/mai-stolovka/pull/12)
+and its tests on 2026-11-03. Bobr's document was read only; no blocking mismatch was found in
+the reviewed signal/recovery boundaries. This is an independent review of Bobr's proposal,
+not independent review of Mac's own runtime or owner approval of operational policy.
+
+| Boundary | Reconciled meaning / evidence |
+| --- | --- |
+| Readiness | `worker_ready` follows guard acquisition, producer start and a guard check; it precedes the first send and proves no ACK, durable mark or downstream delivery. HTTP readiness is separate. |
+| Backlog | `pending_count` / `oldest_pending_seconds` are bounded SQL samples; `backlog_alert` is a log Boolean, not paging. Sample failure emits `backlog_unavailable` without publishing or modifying rows. |
+| ACK versus mark | `acks_total` increments after broker return; `published_total` and `last_success` advance only after the conditional DB mark. Tests cover ACK followed by failed mark and stable-ID replay. |
+| Retry | `retries_total` is process-local; `retry_alert` reflects a continuous failure streak, reset by a successful relay iteration. Neither supplies a durable rate window or alert route. |
+| Guard / poison / ambiguity | Guard loss stops dispatch; invalid envelopes retain pending state. Exit 2 indicates unsafe cleanup: confirm old-process termination before replacement. Never skip/delete the head, reset offsets, or manually mark publication to recover. |
+| Production monitoring | Disk headroom, zero-ACK windows, consumer lag, external alerts, backup/restore objectives and operators remain proposals in #11 and dependencies of #28. |
+
+Review verification: 15 root contract/topic tests and 57 Order non-integration tests passed;
+30 integration cases were deselected in this review, not rerun. The existing Starlette/httpx
+deprecation warning remains. No worker, application topic, customer order or bot send was started.
+The initial `uv run --frozen` attempts could not access the host cache; the checks above used
+the existing project virtual environments directly, without reinstalling dependencies.
+
+GitHub Actions checks inspected at the exact #11/#12 heads passed (including integration):
+[#11 run](https://github.com/KirillBelianskiy/mai-stolovka/actions/runs/41709084227),
+[#12 run](https://github.com/KirillBelianskiy/mai-stolovka/actions/runs/41704814230).
+Cloudflare Pages checks failed on both heads. Their cause is not established here; existing-domain
+assessment belongs to #25. These heads therefore do not have all external checks green.
+
+Bobr's [readback](https://github.com/KirillBelianskiy/mai-stolovka/issues/10#issuecomment-6614189361)
+reconciles his document with #12, but no independent runtime review with test/code findings
+was present in #12's review timeline at inspection. Request that evidence before accepting #15.
+Full SCRUM-18 additionally waits for durable Notification/Kitchen consumers (#17/#24) and
+approved production topology/security/retention/restore/monitoring (#25/#28). Do not close it
+based on local probes or documentation agreement.
 
 ## Development topic tool
 
