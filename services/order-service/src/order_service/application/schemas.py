@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Self
+from typing import Literal, Self
 from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, computed_field, model_validator
@@ -74,6 +74,7 @@ class OrderRead(BaseModel):
     slot_end_time: datetime
     status: OrderStatus
     total_amount: int
+    payment_status: Literal["NOT_REQUIRED", "DEMO_PAID", "DEMO_REFUNDED"] = "NOT_REQUIRED"
     version: int
     created_at: datetime
     updated_at: datetime
@@ -94,3 +95,25 @@ class VersionInput(BaseModel):
 
 class StatusChange(VersionInput):
     status: OrderStatus
+
+
+class DemoCreditInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    user_id: UUID
+    amount: int = Field(strict=True, gt=0, le=MAX_INTEGER)
+
+
+class WalletRead(BaseModel):
+    user_id: UUID
+    balance: int
+    currency: Literal["RUB"] = "RUB"
+    demo: Literal[True] = True
+    checkout_payment_enabled: bool
+
+
+class DemoCreditRead(BaseModel):
+    id: UUID
+    user_id: UUID
+    amount: int
+    balance_after: int
+    demo: Literal[True] = True

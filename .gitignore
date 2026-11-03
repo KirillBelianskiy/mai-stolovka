@@ -18,3 +18,4 @@ out/
 .idea/
 .DS_Store
 skills/
+.private/
