@@ -62,6 +62,13 @@ Container build uses the unchanged frozen lock. Intermediate checks caught expec
 a payment-status typing mismatch and formatting/syntax errors; these were corrected before the
 final passing runs. They are not represented as pre-implementation behavior red evidence.
 
+First PR-head CI (`230aacd`) passed backend/contracts/frontend and the isolated database runner,
+but the full-stack smoke schema check still listed only the old Order tables. It rejected the
+three intended demo tables. The smoke test's explicit expected schema is now updated; the
+remaining seven smoke checks passed in that first run. The final CI result is recorded in the
+PR handoff after the correction. No local full-stack smoke run is claimed: it would migrate the
+existing application databases; CI supplies its own disposable stack for that check.
+
 ## Limits and handoff
 
 Exact PR-head CI is recorded in the PR handoff after publication; local tests alone do not
