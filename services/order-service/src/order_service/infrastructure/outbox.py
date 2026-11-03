@@ -129,6 +129,21 @@ class PostgresOutbox:
             if marked is None:
                 raise InvalidEvent("Pending event changed before publication mark")
 
+    async def backlog(self) -> tuple[int, float]:
+        """Read durable pending state in one short query, outside publication transactions."""
+        async with self.database.sessions() as db:
+            count, age = (
+                await db.execute(
+                    select(
+                        func.count(),
+                        func.coalesce(
+                            func.extract("epoch", func.now() - func.min(OutboxEvent.occurred_at)), 0
+                        ),
+                    ).where(OutboxEvent.published_at.is_(None))
+                )
+            ).one()
+        return int(count), max(0.0, float(age))
+
     async def close(self) -> None:
         try:
             if self.guard_connection is not None:

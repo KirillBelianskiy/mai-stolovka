@@ -1,6 +1,6 @@
 # SCRUM-18 — development topic operations
 
-Status: first implementation slice, 2026-11-03. The owner requested continuing the recorded
+Status: local operations and probe acceptance implemented for review, 2026-11-03. The owner requested continuing the recorded
 backlog order. This branch is stacked on SCRUM-17 head `35915fa`; it does not merge that PR.
 Full SCRUM-18 acceptance remains incomplete.
 
@@ -17,9 +17,9 @@ records the suggested order: SCRUM-22 and 17/18, then 23/24, then 19/20. Fronten
 can start independently of new recipient credentials or Notification storage; consumer durability
 and production operations remain dependencies of the full ticket.
 
-The installed `mai-food-codex-skill` v0008 records SCRUM-17 as its bounded assignment.
-The current continuation request authorizes starting subsequent work; it does not settle every
-D1–D10 policy. Retain its service boundaries, test-first workflow and no-merge/deployment rules.
+The installed `mai-food-codex-skill` v0009 records this bounded SCRUM-18 continuation, preserving
+v0008 as SCRUM-17 history. The current request does not settle every D1–D10 policy. Retain the
+service boundaries, test-first workflow and no-merge/deployment rules.
 The local mailbox skill concerns read-only agent dialogue, not application implementation.
 The generic Forge skill is a generator and needs no modification for this work.
 
@@ -59,21 +59,88 @@ idempotent for matching topics; topology/configuration/unavailable-replica misma
 existing drift never triggers repair; failed commands stop; subprocess calls are bounded.
 
 - Red: the new test module failed because `infra/kafka-topic.py` did not exist.
-- Green: nine focused test methods pass, including eight drift subcases and three malformed
-  metadata subcases. Docker interactions are simulated; these do not prove actual Kafka CLI
-  output compatibility or live provisioning.
+- Green: nine focused topic test methods pass, including eight drift subcases and three malformed
+  metadata subcases. Two additional integration tests execute the real bundled Kafka CLI on
+  UUID-named disposable topics: create/check/repeated create, and existing retention drift refusal.
 - All 15 root contract/operations tests pass. Root Ruff checks (including W), formatting and
   `git diff --check` pass. The new tests run in the existing contracts CI job's
   discovery command without additional CI configuration.
-- Docker was unavailable: `docker compose ps --format json` could not connect to the daemon.
+- During the first slice Docker was unavailable: `docker compose ps --format json` could not connect to the daemon.
   The real `--check` invocation also exited 1 with a sanitized failure. Default plan mode succeeded
-  without Docker. No live topic was created or modified and no pending orders were published.
+  without Docker. On continuation Docker became available; only PostgreSQL/Kafka were started.
+- Diagnostics red: `test_outbox_diagnostics.py` failed importing the absent `report_backlog`;
+  the sustained-retry test later failed because the retry alert field was absent. Both now pass.
+- Order non-integration suite: 57 passed. Ruff including W, full service formatting and strict
+  Mypy pass. Existing Starlette/httpx test-client deprecation warning remains.
+- Isolated runner: User 5, Menu 14 and Order 30 integration tests passed, with Alembic drift
+  checks. The new real PostgreSQL snapshot test verifies empty, two pending, one pending, empty.
+  Independent probes verify exact keys/envelopes, separate committed offsets and valid-offset
+  restart despite a latest fallback. These are probes, not production Notification/Kitchen consumers.
+- The first integration run failed in test cleanup because aiokafka has no group-deletion method.
+  Cleanup now uses the bundled Kafka CLI and nested finalizers. This was a test defect, not a
+  product red result. Exact leaked test resources were removed; subsequent checks pass.
+- Default and opt-in Compose configurations validate. The changed Order image builds and imports
+  the standalone worker/diagnostic settings. Final resource inspection finds no temporary test
+  databases, topics or consumer groups; only Kafka's internal offsets topic remains.
 
-Still required for SCRUM-18: live Kafka 4.4 CLI verification, isolated topic tests for independent
-consumer groups and exact envelopes, backlog/age/ACK/retry/guard diagnostics, recovery/repair
-runbook and consumer durability integration. Production topology, ACLs and recovery policy remain
-owner/operator decisions. Do not mark the whole ticket complete on the strength of this slice.
+## Publication and backlog diagnostics
+
+The opt-in worker emits `outbox_metrics` immediately after startup and periodically thereafter.
+Each sample uses a separate read-only aggregate query over unpublished Outbox rows. It reports
+`pending_count` and nonnegative `oldest_pending_seconds`; empty backlog has zero age. The query
+has the configured readiness deadline and never holds a transaction across broker I/O.
+
+Process-local counters report attempts, broker ACKs, durable marks and retries separately.
+`ack_latency_ms_last` measures the last successful broker wait using a monotonic clock;
+`last_success` is a UTC timestamp set only after the database mark. Counters reset on process
+restart and are not durable totals. An ACK followed by a failed mark can increase ACKs without
+increasing published count. The SQL snapshot and process counters are observational, not one
+atomic snapshot or an external delivery receipt.
+
+| Setting | Default / meaning |
+| --- | --- |
+| APP_OUTBOX_METRICS_INTERVAL_SECONDS | 30; interruptible interval between bounded samples |
+| APP_OUTBOX_BACKLOG_ALERT_SECONDS | 60; `backlog_alert=true` when oldest pending age exceeds it |
+| APP_OUTBOX_RETRY_ALERT_SECONDS | 300; `retry_alert=true` after a continuous retry-error streak |
+
+A successful relay iteration resets the retry streak. Retry totals remain cumulative for the
+process. A database sampling error logs only `backlog_unavailable` and its error class, leaves
+delivery behavior unchanged and retries at the next interval. Guard loss emits `guard_lost` and
+stops publication through the existing lifecycle. Fatal/invalid-event classes remain in
+`worker_stopped`. Logs contain no raw connection errors, credentials or event envelopes.
+
+These signals are structured log fields with reviewable development thresholds. No Prometheus
+endpoint, dashboard, paging integration, persistence or monitoring service is added. Operators
+must collect the logs and define actual alert routing/SLOs separately. Backlog count queries can
+cost more as retained state grows; deadlines bound sampling but do not establish production scale.
+
+## Recovery and repair
+
+1. Check topic configuration with `--check` before enabling publication. A mismatch requires a
+   reviewed migration; do not recreate the topic or increase partitions to make the tool green.
+2. On broker outage or repeated retries, keep the pending rows. HTTP writes remain independent.
+   Check broker availability and configuration; a growing age is evidence of delayed publication.
+3. On `guard_lost`, fatal invalid-event errors or exit 2, stop and confirm the old worker process
+   is gone before replacement. Inspect sanitized error classes and retained row IDs privately.
+   Do not mark unacknowledged events published, rewrite IDs or delete poison records as recovery.
+4. Restarting the relay retries the unchanged pending head. A broker ACK followed by a lost DB
+   mark can replay a duplicate. Consumers need their own durable deduplication/version handling.
+5. Normal consumer restart resumes valid committed offsets. Offset reset/replay is a separate
+   operator action after stopping the affected consumer and assessing durable state, retention
+   and duplicate side effects. This tool provides no reset command and no live group manipulation.
+6. If retention has removed required history, ordinary restart cannot restore it. Preserve the
+   incident and propose a reviewed recovery/backfill. Outbox retention and application record
+   deletion remain unchanged. Never claim seven-day retention supplies a complete restore plan.
+
+Rollback consists of stopping the optional worker. Durable pending state remains; do not remove
+Compose volumes. Tests use temporary databases/topics/groups and do not enable the application
+Outbox profile or create `orders.events.v1`.
+
+Still required for full SCRUM-18: actual durable-consumer integration, production topology, ACLs,
+retention/restore policy and monitoring ownership. These remain dependencies and owner/operator
+decisions. Do not mark the whole ticket complete on the strength of probe acceptance.
 
 Source checked 2026-11-03: [Apache Kafka 4.4 basic operations](https://kafka.apache.org/44/operations/basic-kafka-operations/)
-for explicit topic creation, configuration and partition migration implications. Exact running-image
-CLI compatibility remains unverified while Docker is stopped.
+for explicit topic creation, configuration and partition migration implications;
+[aiokafka consumer guide](https://aiokafka.readthedocs.io/en/stable/consumer.html) for manual offsets,
+group isolation and restart behavior. The running Kafka 4.4 CLI was verified on disposable topics.

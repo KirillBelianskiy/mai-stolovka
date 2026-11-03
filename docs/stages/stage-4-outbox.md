@@ -1,5 +1,8 @@
 # Stage 4, first implementation unit — SCRUM-17
 
+SCRUM-18 follow-up: [development topic operations and worker diagnostics](stage-4-topic-operations.md).
+The SCRUM-17 evidence below is historical to its original delivery.
+
 Status: implemented for review, 2026-11-01, following the owner's continuation request.
 This is the bounded Order-owned relay unit. Notification, WebSocket and frontend runtime work
 remain deferred; new storage/recipient/service-auth decisions are not approved by this unit.

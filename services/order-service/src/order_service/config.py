@@ -25,3 +25,6 @@ class Settings(BaseSettings):
     outbox_send_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
     outbox_shutdown_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
     outbox_guard_interval_seconds: float = Field(default=1.0, gt=0, le=5)
+    outbox_metrics_interval_seconds: float = Field(default=30.0, gt=0, le=300)
+    outbox_backlog_alert_seconds: float = Field(default=60.0, gt=0, le=86400)
+    outbox_retry_alert_seconds: float = Field(default=300.0, gt=0, le=86400)
