@@ -140,6 +140,97 @@ a:focus-visible {
   color: var(--muted-foreground);
   font-size: 12px;
 }
+.profile-section {
+  max-width: 760px;
+  margin: 76px auto 0;
+  padding: 30px 34px;
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+.profile-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--border);
+}
+.profile-heading .eyebrow {
+  margin-bottom: 9px;
+}
+.profile-heading h2 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.7px;
+}
+.profile-form {
+  display: grid;
+  gap: 10px;
+  max-width: 520px;
+  padding-top: 23px;
+}
+.profile-form label {
+  font-size: 12px;
+  font-weight: 700;
+}
+.profile-form input {
+  min-height: 48px;
+  padding: 10px 13px;
+  border: 1px solid #c2cbd4;
+  border-radius: 4px;
+  background: white;
+  color: var(--foreground);
+  font: inherit;
+}
+.profile-form input:focus-visible {
+  outline: 3px solid #2680ff;
+  outline-offset: 2px;
+}
+.profile-note,
+.profile-state p,
+.profile-feedback {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  margin-top: 8px;
+}
+.profile-actions .primary-button {
+  margin: 0;
+}
+.profile-logout {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 13px;
+}
+.profile-state {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  padding-top: 22px;
+}
+.profile-state .primary-button {
+  margin-top: 4px;
+}
+.profile-feedback {
+  margin-top: 18px;
+}
+.profile-feedback.error {
+  color: #a52a22;
+}
 .menu-intro {
   display: flex;
   justify-content: space-between;
@@ -808,8 +899,22 @@ a:focus-visible {
     min-height: 76px;
   }
   .app-header nav {
-    gap: 18px;
-    font-size: 12px;
+    gap: 12px;
+    font-size: 11px;
+  }
+  .profile-section {
+    margin-top: 50px;
+    padding: 24px 20px;
+  }
+  .profile-heading h2 {
+    font-size: 24px;
+  }
+  .profile-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .profile-actions > * {
+    align-self: flex-start;
   }
   .menu-intro h1 {
     font-size: 43px;

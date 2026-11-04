@@ -18,6 +18,7 @@ import {
   Trash2,
   UtensilsCrossed,
 } from "lucide-react";
+import { ProfilePanel } from "@/components/profile-panel";
 import { useEffect, useState } from "react";
 import {
   CART_KEY,
@@ -152,6 +153,7 @@ export function MenuApp() {
               {quantity > 99 ? "99+" : quantity}
             </span>
           </a>
+          <a href="#profile">Профиль</a>
         </nav>
         <span className="header-note">Хороший обед — по плану.</span>
       </header>
@@ -489,6 +491,7 @@ export function MenuApp() {
             </div>
           </aside>
         </div>
+        <ProfilePanel />
         <div className="sr-only" role="status" aria-live="polite">
           {notice}
         </div>
