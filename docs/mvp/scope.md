@@ -119,3 +119,14 @@ memory-only mandatory-relogin recommendation. User-owned #40 now supplies the ex
 protected session/restore/logout/security contract and runtime before #20 auth/profile and
 #21/#33 integration. The UX choice does not approve cookie/CSRF/lifetime/rotation details
 or change staff authentication policy. Public menu/cart proceeds independently in #41.
+
+## Owner-confirmed checkout recovery and time display — 2026-11-04
+
+The owner approved D9: account UUID, original checkout body and idempotency key in the current
+tab's sessionStorage, without credentials/card data. Unknown outcomes reuse the original request;
+clearing recovery data requires an explicit loss/duplicate-risk warning. Storage is untrusted and
+does not prove identity, order existence or payment. Mac #21 owns the implementation.
+
+The owner approved Europe/Moscow slot display with explicit МСК. This does not approve opening
+hours/calendar, pilot fixtures, a 30-second freshness guarantee or other unresolved D10 choices.
+Skill v0014 records the bounded exception; #33 payment UI and integrated #27 acceptance remain.
