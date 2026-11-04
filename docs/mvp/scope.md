@@ -129,4 +129,4 @@ does not prove identity, order existence or payment. Mac #21 owns the implementa
 
 The owner approved Europe/Moscow slot display with explicit МСК. This does not approve opening
 hours/calendar, pilot fixtures, a 30-second freshness guarantee or other unresolved D10 choices.
-Skill v0014 records the bounded exception; #33 payment UI and integrated #27 acceptance remain.
+Skill v0015 records the bounded exception; #33 payment UI and integrated #27 acceptance remain.
