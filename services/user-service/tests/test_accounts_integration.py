@@ -4,6 +4,8 @@ import hmac
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from urllib.parse import urlencode
 from uuid import uuid4
 
@@ -11,11 +13,12 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from user_service.api.accounts import session_token_hash
 from user_service.cli import provision_staff, reset_password
 from user_service.config import Settings
 from user_service.domain.users import Role
 from user_service.infrastructure.database import Database
-from user_service.infrastructure.models import StaffCredential, User
+from user_service.infrastructure.models import StaffCredential, User, UserSession
 
 pytestmark = pytest.mark.integration
 
@@ -33,7 +36,9 @@ def init_data(telegram_id: int = 4567890123456, **fields: str) -> str:
 
 def test_telegram_login_profile_and_prohibited_role_edits(integration_client: TestClient) -> None:
     client = integration_client
-    result = client.post("/auth/telegram", json={"init_data": init_data()})
+    result = client.post(
+        "/auth/telegram", json={"init_data": init_data()}, headers={"Origin": "https://testserver"}
+    )
     assert result.status_code == 200, result.text
     assert result.headers["cache-control"] == "no-store"
     value = result.json()
@@ -44,7 +49,9 @@ def test_telegram_login_profile_and_prohibited_role_edits(integration_client: Te
     assert (
         client.patch("/me", headers=headers, json={"full_name": "Иван Петров"}).status_code == 200
     )
-    again = client.post("/auth/telegram", json={"init_data": init_data()}).json()
+    again = client.post(
+        "/auth/telegram", json={"init_data": init_data()}, headers={"Origin": "https://testserver"}
+    ).json()
     assert again["user"]["id"] == value["user"]["id"]
     assert again["user"]["full_name"] == "Иван Петров"
     assert "password" not in json.dumps(value)
@@ -55,7 +62,11 @@ def test_concurrent_telegram_login_has_one_user(integration_client: TestClient) 
     with ThreadPoolExecutor(max_workers=8) as pool:
         responses = list(
             pool.map(
-                lambda _: integration_client.post("/auth/telegram", json={"init_data": raw}),
+                lambda _: integration_client.post(
+                    "/auth/telegram",
+                    json={"init_data": raw},
+                    headers={"Origin": "https://testserver"},
+                ),
                 range(8),
             )
         )
@@ -66,11 +77,19 @@ def test_concurrent_telegram_login_has_one_user(integration_client: TestClient) 
 def test_bad_signature_and_stale_data_do_not_create_users(integration_client: TestClient) -> None:
     client = integration_client
     assert (
-        client.post("/auth/telegram", json={"init_data": init_data() + "&extra=bad"}).status_code
+        client.post(
+            "/auth/telegram",
+            json={"init_data": init_data() + "&extra=bad"},
+            headers={"Origin": "https://testserver"},
+        ).status_code
         == 401
     )
     assert (
-        client.post("/auth/telegram", json={"init_data": init_data(auth_date="1")}).status_code
+        client.post(
+            "/auth/telegram",
+            json={"init_data": init_data(auth_date="1")},
+            headers={"Origin": "https://testserver"},
+        ).status_code
         == 401
     )
     assert client.get("/me", headers={"Authorization": "Bearer invalid"}).status_code == 401
@@ -130,6 +149,199 @@ def test_telegram_cannot_log_in_as_staff(
 
     asyncio.run(create_staff_identity())
     assert (
-        integration_client.post("/auth/telegram", json={"init_data": init_data()}).status_code
+        integration_client.post(
+            "/auth/telegram",
+            json={"init_data": init_data()},
+            headers={"Origin": "https://testserver"},
+        ).status_code
         == 403
     )
+
+
+def _login(
+    client: TestClient, telegram_id: int = 4567890123456, cookie: str | None = None
+) -> dict[str, Any]:
+    headers = {"Origin": "https://testserver"}
+    if cookie is not None:
+        headers["Cookie"] = f"mai_session={cookie}"
+    response = client.post(
+        "/auth/telegram",
+        json={"init_data": init_data(telegram_id)},
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_session_restore_cookie_storage_restart_logout_and_jwt_expiry_boundary(
+    integration_client: TestClient, integration_settings: Settings
+) -> None:
+    from user_service.main import create_app
+
+    login = _login(integration_client)
+    assert login["expires_in"] == 900
+    raw_cookie = integration_client.cookies.get("mai_session")
+    assert raw_cookie is not None
+
+    async def check_hash_only() -> None:
+        database = Database(integration_settings.database_url.get_secret_value(), 2)
+        try:
+            async with database.sessions() as db:
+                stored = await db.scalar(select(UserSession.token_hash))
+                assert stored == session_token_hash(raw_cookie)
+                assert raw_cookie not in stored
+        finally:
+            await database.close()
+
+    asyncio.run(check_hash_only())
+    restored_app = create_app(integration_settings)
+    with TestClient(restored_app, base_url="https://testserver") as restarted:
+        restored = restarted.post(
+            "/auth/session",
+            headers={"Origin": "https://testserver", "Cookie": f"mai_session={raw_cookie}"},
+        )
+        assert restored.status_code == 200, restored.text
+        assert restored.json()["user"] == login["user"]
+        bearer = {"Authorization": "Bearer " + login["access_token"]}
+        assert (
+            restarted.post(
+                "/auth/logout",
+                headers={"Origin": "https://testserver", "Cookie": f"mai_session={raw_cookie}"},
+            ).status_code
+            == 204
+        )
+        assert (
+            restarted.post("/auth/logout", headers={"Origin": "https://testserver"}).status_code
+            == 204
+        )
+        assert (
+            restarted.post(
+                "/auth/session",
+                headers={"Origin": "https://testserver", "Cookie": f"mai_session={raw_cookie}"},
+            ).status_code
+            == 401
+        )
+        assert restarted.get("/me", headers=bearer).status_code == 200
+
+
+def test_session_cookie_flags_origins_and_missing_invalid_cookie(
+    integration_client: TestClient,
+) -> None:
+    login = integration_client.post(
+        "/auth/telegram",
+        json={"init_data": init_data()},
+        headers={"Origin": "https://testserver"},
+    )
+    assert login.status_code == 200
+    header = login.headers["set-cookie"].lower()
+    assert "mai_session=" in header
+    assert "secure" in header and "httponly" in header and "samesite=strict" in header
+    assert "path=/api/v1/users/auth" in header and "domain=" not in header
+    assert login.json().get("session_token") is None
+    assert integration_client.post("/auth/session").status_code == 403
+    assert (
+        integration_client.post(
+            "/auth/session", headers={"Origin": "https://evil.example"}
+        ).status_code
+        == 403
+    )
+    assert (
+        integration_client.post(
+            "/auth/session",
+            headers={"Origin": "https://testserver", "Cookie": "mai_session=invalid"},
+        ).status_code
+        == 401
+    )
+    assert (
+        integration_client.post(
+            "/auth/session", headers={"Origin": "https://testserver"}
+        ).status_code
+        == 401
+    )
+
+
+def test_session_expiry_and_account_switch_revoke_prior_browser_session(
+    integration_client: TestClient, integration_settings: Settings
+) -> None:
+    first = _login(integration_client, 4567890123456)
+    first_cookie = integration_client.cookies.get("mai_session")
+    assert first_cookie is not None
+    second = _login(integration_client, 4567890123457, first_cookie)
+    second_cookie = integration_client.cookies.get("mai_session")
+    assert second_cookie is not None and second_cookie != first_cookie
+    headers = {"Origin": "https://testserver", "Cookie": f"mai_session={first_cookie}"}
+    assert integration_client.post("/auth/session", headers=headers).status_code == 401
+    assert second["user"]["id"] != first["user"]["id"]
+
+    async def expire_session() -> str:
+        database = Database(integration_settings.database_url.get_secret_value(), 2)
+        try:
+            async with database.sessions() as db:
+                session = await db.scalar(
+                    select(UserSession).where(
+                        UserSession.token_hash == session_token_hash(second_cookie)
+                    )
+                )
+                assert session is not None
+                session.idle_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+                await db.commit()
+        finally:
+            await database.close()
+        return second_cookie
+
+    expiring = asyncio.run(expire_session())
+    assert (
+        integration_client.post(
+            "/auth/session",
+            headers={"Origin": "https://testserver", "Cookie": f"mai_session={expiring}"},
+        ).status_code
+        == 401
+    )
+
+    absolute_login = _login(integration_client, 4567890123458, second_cookie)
+    absolute_cookie = integration_client.cookies.get("mai_session")
+    assert absolute_cookie is not None and absolute_login["user"]["id"] != second["user"]["id"]
+
+    async def expire_absolute_session() -> None:
+        database = Database(integration_settings.database_url.get_secret_value(), 2)
+        try:
+            async with database.sessions() as db:
+                session = await db.scalar(
+                    select(UserSession).where(
+                        UserSession.token_hash == session_token_hash(absolute_cookie)
+                    )
+                )
+                assert session is not None
+                session.idle_expires_at = datetime.now(UTC) + timedelta(days=1)
+                session.absolute_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+                await db.commit()
+        finally:
+            await database.close()
+
+    asyncio.run(expire_absolute_session())
+    assert (
+        integration_client.post(
+            "/auth/session",
+            headers={"Origin": "https://testserver", "Cookie": f"mai_session={absolute_cookie}"},
+        ).status_code
+        == 401
+    )
+
+
+def test_parallel_session_restores_are_serialized(
+    integration_client: TestClient,
+) -> None:
+    _login(integration_client)
+    token = integration_client.cookies.get("mai_session")
+    assert token is not None
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        responses = list(
+            pool.map(
+                lambda _: integration_client.post(
+                    "/auth/session",
+                    headers={"Origin": "https://testserver", "Cookie": f"mai_session={token}"},
+                ),
+                range(8),
+            )
+        )
+    assert all(response.status_code == 200 for response in responses)

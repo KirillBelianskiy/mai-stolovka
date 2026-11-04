@@ -181,13 +181,6 @@
       },
       "ValidationError": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
           "loc": {
             "items": {
               "anyOf": [
@@ -228,11 +221,136 @@
     }
   },
   "info": {
-    "title": "MAI Food — User Service",
+    "title": "MAI Food \u2014 User Service",
     "version": "0.1.0"
   },
   "openapi": "3.1.0",
   "paths": {
+    "/auth/logout": {
+      "post": {
+        "description": "Revokes the presented Mini App session when present and clears its cookie. Requires an allowlisted Origin. Existing access JWTs remain valid until expiry.",
+        "operationId": "logout_auth_logout_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "origin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Origin"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "mai_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mai Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/auth/session": {
+      "post": {
+        "description": "Restores the Mini App identity from the mai_session cookie and issues a fresh access JWT. Requires an allowlisted Origin.",
+        "operationId": "restore_session_auth_session_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "origin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Origin"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "mai_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mai Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Session",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
     "/auth/staff": {
       "post": {
         "operationId": "staff_login_auth_staff_post",
@@ -276,7 +394,26 @@
     },
     "/auth/telegram": {
       "post": {
+        "description": "Validates fresh Telegram initData, creates a revocable browser session, and sets the Secure, HttpOnly mai_session cookie. Requires an allowlisted Origin.",
         "operationId": "telegram_login_auth_telegram_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "origin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Origin"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {

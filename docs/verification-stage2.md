@@ -72,8 +72,29 @@ updated Stage 2 authorization in review PR #1; its generic generator is unchange
 The user subsequently requested autonomous task closure; all three implementation issues were
 transitioned to Done after the acceptance checks passed. The separate skill PR remains open for review.
 
-Product changes remain local and uncommitted, with no product remote or push, as requested.
-No GitHub Actions run or production deployment is claimed.
+At that Stage 2 closeout, product changes were local and uncommitted, with no product push.
+No GitHub Actions run or production deployment was claimed for that closeout.
+
+## Persistent Mini App sessions (SCRUM-40)
+
+Implementation is on branch `SCRUM-40-persistent-user-sessions`, based on `main`. The change adds
+User-owned session persistence, cookie-backed restore/logout endpoints, the User OpenAPI snapshot,
+and migration/API integration cases for expiry, replay, account switching, parallel restore, and
+restart restoration.
+
+| Check | Result |
+| --- | --- |
+| `python -m compileall` for User source, tests, and migrations | Passed |
+| Ruff check and formatting check for User Service | Passed (Ruff 0.8.2 from system Python) |
+| `git diff --check` | Passed |
+| OpenAPI JSON syntax | Passed |
+| User pytest, strict mypy, Alembic/PostgreSQL integration | Not run: this checkout has Python 3.11 only, no `uv`, `asyncpg`, or `pwdlib`; Docker Desktop is stopped |
+| Browser regression across engines | Not run: Mini App integration is outside this issue and no local HTTPS app/test runtime is available |
+
+The OpenAPI snapshot was rendered from the app schema using temporary import shims for the missing
+`pwdlib` and `asyncpg` packages; this did not execute authentication code. No pytest, database, or
+browser compatibility result is inferred from that generation step. Complete the omitted runtime
+and browser checks before treating this session flow as verified for integration.
 
 ## Practical limits
 
