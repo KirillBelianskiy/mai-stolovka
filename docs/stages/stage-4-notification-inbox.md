@@ -38,6 +38,9 @@ UTF-8 JSON, no duplicate keys/NaN, closed schema/version and UUID Kafka key/aggr
 Reject payloads over 64 KiB. Quarantine stores source location, nullable verified event ID,
 static reason, nullable-aware key/value SHA-256 hashes and at most 64 KiB of raw value with a
 truncation flag. It never invents a verified ID from invalid content.
+Versions beyond the producer/store PostgreSQL INTEGER range are quarantined as `version_bounds`,
+so otherwise schema-valid numeric overflow cannot block all subsequent records. The shared schema
+is unchanged; this is a consumer storage limit with durable failure evidence.
 
 One short transaction locks the partition checkpoint, validates existing source receipt, claims
 the event ID and serializes order observation updates. The checkpoint, receipt, inbox,
@@ -169,8 +172,8 @@ was removed after checking the installed 0.15 API, not hidden behind an untested
 | Check | Actual local result |
 | --- | --- |
 | Frozen Notification sync / lock | Added PostgreSQL/Alembic/schema dependencies; frozen install passed |
-| Notification non-integration tests | 17 pass: parser/schema/key/size/duplicate keys, canonical hashes/lifecycle, bundled schema equality, DB-before-offset and failed-prefix/assignment guards, existing process health |
-| Isolated real PG/Kafka Notification tests | 16 pass, including duplicate/concurrent sources and versions, redirected ID conflicts, terminal suppression, poison/rollback, source reuse/restore checks and DB-role isolation |
+| Notification non-integration tests | 18 pass: parser/schema/key/size/version bounds/duplicate keys, canonical hashes/lifecycle, bundled schema equality, DB-before-offset and failed-prefix/assignment guards, existing process health |
+| Isolated real PG/Kafka Notification tests | 17 pass, including version-overflow quarantine, duplicate/concurrent sources and versions, redirected ID conflicts, terminal suppression, poison/rollback, source reuse/restore checks and DB-role isolation |
 | Real broker/process probes | DB-commit-before-broker-commit restart replay, durable poison before ACK, failed n with n+1 fetched, actual broker-ahead recovery stop, actual delete-records retention gap stop, singleton exclusion, guard termination, restart and SIGTERM |
 | Other isolated services | User 5, Menu 14, Order 30 passed on this #12-based branch; Notification-specific later reruns did not alter their runtime |
 | Alembic drift | Passed for all four services on their exercised isolated runs |

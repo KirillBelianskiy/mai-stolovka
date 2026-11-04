@@ -83,6 +83,11 @@ def test_schema_and_key_mismatch_are_rejected():
         parsed(body)
 
 
+def test_version_outside_storage_range_is_quarantinable():
+    with pytest.raises(InvalidRecord, match="version_bounds"):
+        parsed(event(version=2**31))
+
+
 def test_known_lifecycle_forks_and_impossible_adjacency_are_rejected():
     pending, ready, completed, cancelled = (
         parsed(event("PENDING", 1)),

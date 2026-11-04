@@ -65,6 +65,9 @@ def parse_event(key: bytes | None, value: bytes | None) -> Event:
         if key is None or len(key) != 36 or UUID(key.decode("ascii")) != UUID(body["aggregate_id"]):
             raise InvalidRecord("key_mismatch")
         payload = body["payload"]
+        # Match the producer's and this store's PostgreSQL INTEGER version representation.
+        if payload["order_version"] > 2**31 - 1:
+            raise InvalidRecord("version_bounds")
         return Event(
             UUID(body["event_id"]),
             UUID(body["aggregate_id"]),

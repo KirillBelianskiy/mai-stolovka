@@ -142,6 +142,19 @@ def test_poison_is_durable_and_database_failure_does_not_advance():
     run_test(check)
 
 
+def test_version_overflow_is_quarantined_without_blocking_next_record():
+    async def check(store):
+        assert await store.ingest(record(event(version=2**31))) == "QUARANTINED"
+        assert await store.ingest(record(event(), 1)) == "ACCEPTED"
+        assert await store.position("test-topic", 0) == 2
+        assert await count(store, Obligation) == 1
+        async with store.sessions() as db:
+            receipt = await db.scalar(select(Receipt).where(Receipt.offset == 0))
+            assert receipt.reason == "version_bounds" and receipt.protected_value is not None
+
+    run_test(check)
+
+
 def test_restore_ahead_behind_and_retention_gap_fail_closed():
     async def check(store):
         await store.ingest(record(event()))
