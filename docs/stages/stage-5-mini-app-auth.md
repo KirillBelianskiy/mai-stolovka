@@ -23,7 +23,7 @@ change the User API, checkout, payments, or the existing menu/cart implementatio
 | --- | --- |
 | Mini App Node tests | 18 passed, including restore-first, login fallback, malformed responses, token refresh, explicit account switching, profile update, logout and network errors |
 | Mini App TypeScript check | Passed on final source |
-| Next.js static export build | Passed before the final refresh fallback and account-switch test changes; not rerun after those source changes |
+| Next.js static export build | Passed on the final source; all 18 tests passed in the build command, TypeScript completed, and both static routes prerendered |
 | `git diff --check` | Passed |
 | Chromium against live User Service over HTTPS | Not run: local disposable User DB setup could not authenticate with the checked-out local PostgreSQL credentials; the temporary DB was removed. |
 | Live Telegram client | Not run: no real BotFather token or Telegram session was supplied. |
