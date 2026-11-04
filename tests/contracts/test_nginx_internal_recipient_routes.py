@@ -8,7 +8,9 @@ class InternalRecipientRouteTests(unittest.TestCase):
         routes = (root / "infra/nginx/api-routes.conf").read_text()
         config = (root / "infra/nginx/nginx.conf").read_text()
 
-        private_route = "location ^~ /api/v1/users/internal/v1/notification-recipients/ { return 404; }"
+        private_route = (
+            "location ^~ /api/v1/users/internal/v1/notification-recipients/ { return 404; }"
+        )
         self.assertIn(private_route, routes)
         self.assertIn("location /api/v1/users/ {", routes)
         self.assertLess(routes.index(private_route), routes.index("location /api/v1/users/ {"))
