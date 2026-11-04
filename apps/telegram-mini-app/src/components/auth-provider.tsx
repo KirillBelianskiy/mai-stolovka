@@ -38,6 +38,10 @@ type AuthContextValue = {
   refreshProfile: () => Promise<UserProfile>;
   saveFullName: (name: string) => Promise<UserProfile>;
   signOut: () => Promise<void>;
+  withAccount: <T>(
+    accountId: string,
+    operation: (token: string) => Promise<T>,
+  ) => Promise<T>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -89,7 +93,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const accept = useCallback((value: AuthCredentials, clearError = true) => {
-    generationRef.current += 1;
+    if (
+      credentialsRef.current?.user.id !== value.user.id ||
+      statusRef.current !== "authenticated"
+    ) {
+      generationRef.current += 1;
+    }
     credentialsRef.current = value;
     statusRef.current = "authenticated";
     setCredentials(value);
@@ -100,7 +109,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const reject = useCallback((reason: unknown) => {
     generationRef.current += 1;
     credentialsRef.current = null;
-    const nextStatus = reason instanceof AuthApiError && reason.status === 401 ? "anonymous" : "error";
+    const nextStatus =
+      reason instanceof AuthApiError && reason.status === 401
+        ? "anonymous"
+        : "error";
     statusRef.current = nextStatus;
     setCredentials(null);
     setStatus(nextStatus);
@@ -233,14 +245,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return profile;
   }, [accept, withFreshToken]);
 
-  const saveFullName = useCallback(async (name: string) => {
-    const profile = await withFreshToken((token) => updateProfile(token, name));
-    const current = credentialsRef.current;
-    if (current?.user.id === profile.id) {
-      accept({ ...current, user: profile });
-    }
-    return profile;
-  }, [accept, withFreshToken]);
+  const withAccount = useCallback(
+    async <T,>(accountId: string, operation: (token: string) => Promise<T>) => {
+      if (credentialsRef.current?.user.id !== accountId) {
+        throw new AuthApiError("Account changed", 409);
+      }
+      return withFreshToken(operation);
+    },
+    [withFreshToken],
+  );
+
+  const saveFullName = useCallback(
+    async (name: string) => {
+      const profile = await withFreshToken((token) =>
+        updateProfile(token, name),
+      );
+      const current = credentialsRef.current;
+      if (current?.user.id === profile.id) {
+        accept({ ...current, user: profile });
+      }
+      return profile;
+    },
+    [accept, withFreshToken],
+  );
 
   const signOut = useCallback(async () => {
     setBusy(true);
@@ -254,7 +281,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setCredentials(null);
       setStatus("anonymous");
     } catch (reason) {
-      setError("Не удалось завершить сессию. Проверьте подключение и повторите попытку.");
+      setError(
+        "Не удалось завершить сессию. Проверьте подключение и повторите попытку.",
+      );
       throw reason;
     } finally {
       setBusy(false);
@@ -275,6 +304,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refreshProfile,
         saveFullName,
         signOut,
+        withAccount,
       }}
     >
       {children}
