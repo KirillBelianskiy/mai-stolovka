@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     telegram_bot_token: SecretStr | None = None
     telegram_init_data_max_age_seconds: int = Field(default=300, ge=30, le=3600)
     session_cookie_allowed_origins: str = "http://localhost:8080,http://localhost:3000"
+    notification_service_public_key_base64: SecretStr | None = None
+    notification_service_issuer: str = "mai-food-notification"
+    notification_service_audience: str = "mai-food-user"
+    notification_service_key_id: str = "notification-v1"
+    telegram_webhook_secret: SecretStr | None = None
     root_path: str = "/api/v1/users"
 
     @property
