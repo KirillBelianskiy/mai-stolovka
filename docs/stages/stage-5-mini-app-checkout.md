@@ -9,7 +9,7 @@ This branch changes the Mini App and scoped test tooling/lockfile, not backend A
 On 2026-11-04 the owner answered “Да, хранить в текущей вкладке” to D9: account UUID, original
 checkout request and key in sessionStorage, no tokens/card data, reuse after unknown results,
 and explicit warning before deleting recovery data. The owner answered “Да, Москва / МСК”
-for displayed slot times. Skill v0014 preserves these bounded choices; this does not approve
+for displayed slot times. Skill v0015 preserves these bounded choices; this does not approve
 opening hours/calendar, all other D10 proposals, production retention or real-money providers.
 
 Acceptance: persist before POST, original body/key through retry/reload, no silent second intent,
