@@ -27,7 +27,35 @@ export class AuthApiError extends Error {
   }
 }
 
+export class AccountChangedError extends AuthApiError {
+  readonly credentials: AuthCredentials;
+
+  constructor(credentials: AuthCredentials) {
+    super("Account changed during session restoration", 409);
+    this.name = "AccountChangedError";
+    this.credentials = credentials;
+  }
+}
+
 type Fetcher = typeof fetch;
+
+export function readTelegramInitData(
+  locationHref: string,
+  navigationHref?: string,
+): string | undefined {
+  for (const href of [locationHref, navigationHref]) {
+    if (!href) continue;
+    try {
+      const url = new URL(href);
+      const value = new URLSearchParams(url.hash.slice(1)).get("tgWebAppData")
+        ?? url.searchParams.get("tgWebAppData");
+      if (value && value.length <= 16384) return value;
+    } catch {
+      // Missing or malformed launch data never proves a Telegram identity.
+    }
+  }
+  return undefined;
+}
 
 function record(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -194,12 +222,16 @@ export async function withTokenRefresh<T>(
   accessToken: string,
   operation: (token: string) => Promise<T>,
   restore: () => Promise<AuthCredentials> = restoreSession,
+  expectedUserId: string,
 ): Promise<{ value: T; credentials: AuthCredentials | null }> {
   try {
     return { value: await operation(accessToken), credentials: null };
   } catch (error) {
     if (!(error instanceof AuthApiError) || error.status !== 401) throw error;
     const refreshed = await restore();
+    if (refreshed.user.id !== expectedUserId) {
+      throw new AccountChangedError(refreshed);
+    }
     return {
       value: await operation(refreshed.access_token),
       credentials: refreshed,

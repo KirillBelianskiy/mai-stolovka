@@ -10,10 +10,12 @@ import {
   type ReactNode,
 } from "react";
 import {
+  AccountChangedError,
   AuthApiError,
   loginTelegram,
   loadProfile,
   logout as logoutRequest,
+  readTelegramInitData,
   restoreOrLogin,
   switchTelegramAccount,
   updateProfile,
@@ -64,29 +66,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const generationRef = useRef(0);
 
   useEffect(() => {
-    let current = true;
-    void import("@tma.js/sdk")
-      .then(({ retrieveRawInitData }) => {
-        if (current) setInitData(retrieveRawInitData());
-      })
-      .catch(() => {
-        if (current) setInitData(undefined);
-      })
-      .finally(() => {
-        if (current) setInitDataReady(true);
-      });
-    return () => {
-      current = false;
-    };
+    // The SDK reader caches the full launch URL (including initData) in sessionStorage.
+    // Remove only that legacy cache and use the current/navigation URL directly.
+    try {
+      sessionStorage.removeItem("tapps/launchParams");
+    } catch {
+      // Storage may be disabled.
+    }
+    let value = readTelegramInitData(window.location.href);
+    if (!value) {
+      try {
+        value = readTelegramInitData(
+          window.location.href,
+          performance.getEntriesByType("navigation")[0]?.name,
+        );
+      } catch {
+        // Navigation timing may be unavailable.
+      }
+    }
+    setInitData(value);
+    setInitDataReady(true);
   }, []);
 
-  const accept = useCallback((value: AuthCredentials) => {
+  const accept = useCallback((value: AuthCredentials, clearError = true) => {
     generationRef.current += 1;
     credentialsRef.current = value;
     statusRef.current = "authenticated";
     setCredentials(value);
     setStatus("authenticated");
-    setError(null);
+    if (clearError) setError(null);
   }, []);
 
   const reject = useCallback((reason: unknown) => {
@@ -186,7 +194,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           return restoreOrLogin(initData);
         },
+        current.user.id,
       ).catch((refreshError) => {
+        if (
+          generation === generationRef.current &&
+          refreshError instanceof AccountChangedError
+        ) {
+          accept(refreshError.credentials);
+          setError(
+            "Аккаунт изменился. Предыдущее действие отменено — проверьте профиль и повторите его.",
+          );
+        }
         if (
           generation === generationRef.current &&
           refreshError instanceof AuthApiError &&
@@ -196,9 +214,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         throw refreshError;
       });
-      if (result.credentials && generation === generationRef.current) {
-        accept(result.credentials);
+      if (generation !== generationRef.current) {
+        throw new AuthApiError("Authentication changed", 409);
       }
+      if (result.credentials) accept(result.credentials);
       return result.value;
     },
     [accept, initData, reject],
@@ -209,7 +228,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const profile = await withFreshToken((token) => loadProfile(token));
     const current = credentialsRef.current;
     if (current && generation === generationRef.current) {
-      accept({ ...current, user: profile });
+      accept({ ...current, user: profile }, false);
     }
     return profile;
   }, [accept, withFreshToken]);

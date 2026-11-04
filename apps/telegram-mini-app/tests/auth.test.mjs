@@ -168,6 +168,7 @@ test("an expired access token restores once and retries the authorized request",
       return profile;
     },
     async () => refreshed,
+    profile.id,
   );
   assert.deepEqual(tokens, ["expired-access-token", "fresh-access-token"]);
   assert.deepEqual(result, { value: profile, credentials: refreshed });
@@ -185,6 +186,7 @@ test("failed access-token refresh does not retry the protected request", async (
       async () => {
         throw new AuthApiError("Session expired", 401);
       },
+      profile.id,
     ),
     (error) => error instanceof AuthApiError && error.status === 401,
   );
@@ -200,4 +202,37 @@ test("name updates reject blank and overlong values before sending a request", a
   await assert.rejects(updateProfile(credentials.access_token, "   ", fetcher));
   await assert.rejects(updateProfile(credentials.access_token, "x".repeat(257), fetcher));
   assert.equal(calls, 0);
+});
+
+test("account change during token restoration never retries the old account operation", async () => {
+  let attempts = 0;
+  const other = {
+    ...credentials,
+    user: { ...profile, id: "7c375712-23bc-4aa4-85d2-1950608520f0" },
+  };
+  await assert.rejects(
+    withTokenRefresh(
+      credentials.access_token,
+      async () => {
+        attempts += 1;
+        if (attempts === 1) throw new AuthApiError("Expired", 401);
+        return "wrong account mutation";
+      },
+      async () => other,
+      profile.id,
+    ),
+    (error) => error instanceof AuthApiError && error.status === 409,
+  );
+  assert.equal(attempts, 1);
+});
+
+test("raw Telegram data is read from launch URLs without a storage cache", async () => {
+  const { readTelegramInitData } = await import("../src/lib/auth.ts");
+  const raw = "auth_date=1&user=%7B%22id%22%3A7%7D&hash=signed";
+  const launch = `https://example.test/#tgWebAppData=${encodeURIComponent(raw)}&tgWebAppVersion=8.0`;
+  assert.equal(readTelegramInitData(launch), raw);
+  assert.equal(readTelegramInitData("https://example.test/", launch), raw);
+  assert.equal(readTelegramInitData("https://example.test/?tgWebAppData=" + encodeURIComponent(raw)), raw);
+  assert.equal(readTelegramInitData("https://example.test/"), undefined);
+  assert.equal(readTelegramInitData("not a URL"), undefined);
 });
