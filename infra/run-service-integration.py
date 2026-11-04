@@ -1,5 +1,6 @@
-"""Run User/Menu/Order integration tests in temporary service-owned PostgreSQL databases."""
+"""Run service integration tests in temporary service-owned PostgreSQL databases."""
 
+import argparse
 import os
 import subprocess
 import sys
@@ -38,6 +39,9 @@ def admin_sql(query: str) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--service", choices=("user", "menu", "order", "notification"))
+    selected = parser.parse_args().service
     values = dict(
         line.split("=", 1)
         for line in (ROOT / ".env").read_text().splitlines()
@@ -48,7 +52,10 @@ def main() -> None:
         ("user", "users_owner", "USERS_DB_PASSWORD"),
         ("menu", "menu_owner", "MENU_DB_PASSWORD"),
         ("order", "orders_owner", "ORDERS_DB_PASSWORD"),
+        ("notification", "notifications_owner", "NOTIFICATIONS_DB_PASSWORD"),
     ):
+        if selected is not None and service != selected:
+            continue
         name = f"mai_test_{service}_{uuid4().hex}"
         admin_sql(f"CREATE DATABASE {name} OWNER {owner}")
         try:
@@ -56,7 +63,7 @@ def main() -> None:
             environment = os.environ.copy()
             url = f"postgresql+asyncpg://{owner}:{values[password_key]}@{address}/{name}"
             environment.update(APP_DATABASE_URL=url, MAI_TEST_DATABASE_URL=url)
-            if service == "order":
+            if service in {"order", "notification"}:
                 environment["MAI_TEST_KAFKA_BOOTSTRAP_SERVERS"] = compose(
                     "port", "kafka", "9092"
                 ).stdout.strip()

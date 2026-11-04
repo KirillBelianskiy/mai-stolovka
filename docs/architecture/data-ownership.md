@@ -1,13 +1,15 @@
 # Data ownership
 
-Status: User/Menu/Order entities and migrations are implemented through Stage 3. Consumer storage remains undecided.
+Status: User/Menu/Order entities and migrations are implemented through Stage 3. The owner
+approved Notification-owned durable ingestion on 2026-11-04 under skill v0013/#17; dispatch
+and recipient permissions remain separate. See [the inbox guide](../stages/stage-4-notification-inbox.md).
 
 | Owner | Database / login role | Owned data |
 | --- | --- | --- |
 | User Service | users_db / users_owner | UUID user ID, unique nullable Telegram ID, nullable username, full name, role, creation timestamp; separate staff_credentials with unique normalized login and Argon2 hash |
 | Menu Service | menu_db / menu_owner | Categories and menu items, integer prices in kopecks, image URLs, availability |
 | Order Service | orders_db / orders_owner | Slots, orders, immutable item snapshots, idempotency records, outbox |
-| Notification Service | No relational database in Stage 1 | Durable retry/deduplication storage remains a prerequisite before delivery implementation |
+| Notification Service | notifications_db / notifications_owner (approved Stage 4 exception to the Stage 1 shell) | Source checkpoints/receipts, event inbox, per-version observations, READY obligations and poison/conflict quarantine; no dispatch or automatic deletion |
 | WebSocket Service | No database | Ephemeral connections; canonical order state remains in Order Service |
 
 Service UUID references are not PostgreSQL foreign keys across databases. Within a database, normal foreign keys and constraints should enforce integrity. Services must not import another service's ORM models, application classes, or repositories. `packages/contracts` contains wire contracts only.
@@ -26,7 +28,7 @@ No distributed database transaction or synchronous cross-service call under a sl
 
 ## Local database isolation
 
-The PostgreSQL initialization script creates separate login owners without superuser, role creation, or database creation privileges. It revokes PUBLIC privileges on the three application databases and PUBLIC connection access to the default databases. Each owner can connect to its own database and own its schema; other application roles cannot connect. The bootstrap administrator is used only for database initialization/operations, never by a service.
+The PostgreSQL initialization script creates separate login owners without superuser, role creation, or database creation privileges. It revokes PUBLIC privileges on the four application databases and PUBLIC connection access to the default databases. Each owner can connect to its own database and own its schema; other application roles cannot connect. The bootstrap administrator is used only for database initialization/operations, never by a service.
 
 One login also performs migrations in local development. Separate migration/runtime credentials may be introduced when deployment requirements justify them. Schema grants and DB ownership follow [PostgreSQL privilege rules](https://www.postgresql.org/docs/current/ddl-priv.html).
 
