@@ -84,17 +84,19 @@ restart restoration.
 
 | Check | Result |
 | --- | --- |
-| `python -m compileall` for User source, tests, and migrations | Passed |
-| Ruff check and formatting check for User Service | Passed (Ruff 0.8.2 from system Python) |
+| Python 3.12.12 and `uv sync --frozen` for User Service | Passed; isolated `.venv` created |
+| User Ruff check, format check, and strict Mypy | Passed |
+| User `pytest -q` | 44 passed, 9 PostgreSQL tests skipped without an integration URL |
+| Disposable User PostgreSQL integration | 9 passed, including session lifecycle/concurrency; temporary database dropped |
+| Alembic upgrade and `alembic check` | Passed; no model drift |
+| OpenAPI snapshot test under locked dependencies | Passed |
+| Chromium over local HTTPS | Passed: cookie flags, login/restore, actual service restart, untrusted Origin, cleared and blocked cookies, account switch, logout and replay |
 | `git diff --check` | Passed |
-| OpenAPI JSON syntax | Passed |
-| User pytest, strict mypy, Alembic/PostgreSQL integration | Not run: this checkout has Python 3.11 only, no `uv`, `asyncpg`, or `pwdlib`; Docker Desktop is stopped |
-| Browser regression across engines | Not run: Mini App integration is outside this issue and no local HTTPS app/test runtime is available |
 
-The OpenAPI snapshot was rendered from the app schema using temporary import shims for the missing
-`pwdlib` and `asyncpg` packages; this did not execute authentication code. No pytest, database, or
-browser compatibility result is inferred from that generation step. Complete the omitted runtime
-and browser checks before treating this session flow as verified for integration.
+The browser regression used a temporary HTTPS proxy and test page against the real User Service and
+a disposable PostgreSQL database; no Mini App source was changed. One Starlette warning remains:
+`httpx` support in `starlette.testclient` is deprecated in favor of `httpx2`. Local test credentials
+are generated in the ignored `.env`; no secrets or generated test harness were committed.
 
 ## Practical limits
 
