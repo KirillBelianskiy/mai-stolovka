@@ -20,7 +20,7 @@ at `5ffed86`; they are not new Jira issue numbers.
 | D5 Proposed | Local known-version READY eligibility; accept unseen-terminal/send race and no recall guarantee. Proposed eight attempts/24h, 10s request/60s lease with bounded ambiguous retries; alternative manual ambiguity repair reduces duplicate sends but delays delivery | Owner chooses duplicate-versus-delay behavior and budgets before #18; fake Bot API failure tests required |
 | D6 Proposed | Choose trusted webhook with authenticated update receipt or single long-polling owner; name existing bot/entry flow without publishing token. Approve READY message/link, permission-denied UX and late-grant policy | Owner provides bot identity/configuration privately; Bobr #16/#25 and Mac #18/#20. Identity verification alone is not write consent |
 | D7 Proposed | Staff first-frame JWT, exact Origin, queued ready/minimal hints; proposed 5s auth, 12KiB frame and 128 queue bounds. Alternative tickets/cookies requires backend contract work | Owner approves protocol/security tradeoffs; Bobr #19/#24, shared schema writer agreed first |
-| D8 Proposed | Memory-only JWT with explicit re-login on expiry/reopen; preserve safe non-secret cart intent. Alternative durable sessions requires a new backend lifecycle | Owner accepts re-login UX before Mac #20 and Bobr #22; no unapproved token persistence |
+| D8 UX confirmed, 2026-11-04; security contract pending | Owner chose retained Mini App login after close/reopen: “Нужен вход с сохранением сессии”. The memory-only/mandatory-relogin recommendation is rejected for customers. A User-owned protected persistent session/restore/logout contract is required; do not persist JWT/initData in browser storage | Bobr #40 specifies and implements the exact cookie/CSRF/lifetime/rotation/recovery boundary; Mac #20 auth/profile and #21/#33 depend on it. Staff-session policy is unchanged; public menu/cart proceeds independently in #41 |
 | D9 Proposed | Account-bound validated sessionStorage checkout journal with original key/body; warn before clearing uncertain intent. Alternative memory-only loses recovery on close | Owner approves storage/privacy/recovery behavior before #21 and payment UI; never store credentials or trust a journal as payment proof |
 | D10 Proposed | Visible 30s REST recovery plus focus/online reconciliation, eventual non-atomic pagination and explicit timezone display. Choose cafeteria timezone/calendar, opening days and pilot slot fixtures | Owner confirms calendar/timezone and freshness UX; Bobr #22/#23/#24 and Mac #21/#27 |
 | P3 Proposed | Named pilot staff/customers, test window, synthetic-credit budget, alert/incident operator and accepted recovery objectives. Scope A1–A8 and severity rules proposed as acceptance baseline | Owner/operator #28/#30; entry requires #29 approval and no critical/high open defects |
@@ -29,7 +29,9 @@ at `5ffed86`; they are not new Jira issue numbers.
 
 - Ready now: #14 decision/acceptance preparation; #15 runtime/design review; Bobr's #25
   read-only deployment assessment and #16 contract review. Respect exclusive paths.
-- #20/#22 runtime waits for credential/entry decisions; #19 waits for protocol/security decisions.
+- #20 public menu/cart is implemented for review in #41; customer auth/profile waits for
+  User-owned persistent-session task #40 and the actual entry contract. #22 retains its own
+  staff credential decisions; #19 retains protocol/security gates.
 - #17 waits for store and recipient decisions; #18 adds bot/retry/ambiguity decisions.
 - Payment P1/P2 are confirmed; backend #32 is implemented for review in #36. Mini App #33
   follows that API and the remaining applicable browser/checkout decisions. Other D2–D10

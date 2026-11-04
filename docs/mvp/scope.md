@@ -110,3 +110,12 @@ approved in the owner's chat replies on 2026-11-03. No provider or unrelated D2â
 is approved by those replies.
 This change is documentation only: link/decision coverage and whitespace checks are recorded
 in its PR; payment and end-to-end tests remain unexecuted until implementation.
+
+
+## Persistent-login owner choice â€” 2026-11-04
+
+The owner explicitly chose retained Mini App login after closing/reopening instead of the
+memory-only mandatory-relogin recommendation. User-owned #40 now supplies the exact
+protected session/restore/logout/security contract and runtime before #20 auth/profile and
+#21/#33 integration. The UX choice does not approve cookie/CSRF/lifetime/rotation details
+or change staff authentication policy. Public menu/cart proceeds independently in #41.
