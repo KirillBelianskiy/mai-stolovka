@@ -55,9 +55,16 @@ GitHub Actions checks inspected at the exact #11/#12 heads passed (including int
 Cloudflare Pages checks failed on both heads. Their cause is not established here; existing-domain
 assessment belongs to #25. These heads therefore do not have all external checks green.
 
-Bobr's [readback](https://github.com/KirillBelianskiy/mai-stolovka/issues/10#issuecomment-6614189361)
-reconciles his document with #12, but no independent runtime review with test/code findings
-was present in #12's review timeline at inspection. Request that evidence before accepting #15.
+Review-record correction, 2026-11-04: Bobr already reported the independent read-only runtime
+review at exact head `07f02b62907e8b725b089dd4f822a1759b9da641` in
+[issue #10](https://github.com/KirillBelianskiy/mai-stolovka/issues/10#issuecomment-6614144173).
+It distinguishes implemented local diagnostics from external paging/disk/lag/durable metrics and
+reports no blocking mismatch. His later
+[document reconciliation](https://github.com/KirillBelianskiy/mai-stolovka/issues/10#issuecomment-6614189361)
+complements that review. The earlier request for another identical runtime review overlooked
+this existing coordination record; no duplicate review is required merely because it is outside
+#12's timeline. This acknowledges Bobr's recorded review, not a claim that he reran tests locally
+or approved production operations. Mac's independent #11 review remains separately attributed.
 Full SCRUM-18 additionally waits for durable Notification/Kitchen consumers (#17/#24) and
 approved production topology/security/retention/restore/monitoring (#25/#28). Do not close it
 based on local probes or documentation agreement.
