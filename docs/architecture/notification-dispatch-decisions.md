@@ -1,12 +1,12 @@
 # READY notification dispatch — owner decisions for #18
 
-Status: proposal for review, 2026-11-05. No runtime change, webhook registration, credential
+Status: D5 and D6 approved by the owner on 2026-11-05. Runtime awaits recipient acceptance. No runtime change, webhook registration, credential
 request or live send. This narrows the [delivery design](https://github.com/KirillBelianskiy/mai-stolovka/pull/6)
 to the implemented inbox and recipient review baselines. #18 remains open.
 
-## Decisions to approve
+## Approved decisions
 
-**D5 — uncertain delivery.** Recommended: retry a timed-out or unacknowledged `sendMessage`
+**D5 — uncertain delivery.** The owner selected “Retry within the cap (recommended; may send a duplicate)”. retry a timed-out or unacknowledged `sendMessage`
 with an explicit possible-duplicate flag. The total automatic budget is at most eight send
 attempts within 24 hours of the original READY event's `occurred_at`, including uncertain attempts.
 Use 10-second network deadlines, a 60-second claim lease and exponential backoff with jitter
@@ -14,20 +14,20 @@ bounded to 1–300 seconds. A Telegram rate limit may require waiting longer: ne
 `retry_after`; expire if it exceeds the eligibility window. Persist attempts, expiry and shared
 bot cooldown across restarts. One initial worker, one send in flight globally. No paid broadcasts.
 
-Alternative: hold an uncertain send for operator review, with no automatic resend of that
+The unselected alternative was to hold an uncertain send for operator review, with no automatic resend of that
 attempt. Continue the same bounded retry policy for definitely rejected retryable requests.
 This reduces duplicate risk at the cost of delayed or missed pickup messages. Neither option
 guarantees exactly-once Telegram delivery: the public `sendMessage` interface documents no
 caller-provided idempotency key. The stable event ID deduplicates local work only.
 
-**D6 — permission updates, message and regrant.** Recommended: one secret-authenticated HTTPS
+**D6 — permission updates, message and regrant.** The owner selected “Approve the proposal (recommended)”. one secret-authenticated HTTPS
 webhook using User's existing `POST /internal/v1/telegram/webhook` behind a separately reviewed
 public ingress mapping. Notification does not receive bot updates. Keep the two recipient service
 routes private; do not expose the `/internal/` namespace. A configured bot uses either webhook
 or polling, never both. Long polling would require a separate durable intake and offset design;
 do not add it as a fallback. Until hosting is ready, use the fake Bot API and synthetic fixtures.
 
-Only notify a currently eligible private recipient for a still-relevant READY order. Proposed
+Only notify a currently eligible private recipient for a still-relevant READY order. Approved
 plain-text Russian copy: **«Заказ {order_number} готов к выдаче.»** Link label **«Открыть заказы»**,
 destination `https://maistolovka.me/#orders`. No order contents, identity details or credentials
 in the URL. Verify that link and authenticated entry with the permitted test account under #25/#27
@@ -42,7 +42,7 @@ report cannot overwrite newer User evidence. No generic HTTP error, browser call
 unblock alone or prior successful message proves permission. Bot identity and credentials are
 configured privately only for a separately authorized controlled test or rollout.
 
-## Concrete implementation boundary after approval
+## Implementation boundary after recipient acceptance
 
 - Inbox PR #43 `e10599381941b181b928ab8fdcc8f4fac17467d3` already durably creates one
   `ready_obligations` row per `(order_id, version)` and freezes/suppresses it on known conflicts
@@ -55,7 +55,7 @@ configured privately only for a separately authorized controlled test or rollout
   only for the matching claim token. No transaction spans a network call. This cannot prevent a
   Telegram request racing with a not-yet-observed terminal event or revoke an escaped request.
 - Store acknowledged message evidence only on a confirmed response. Lost ACK, timeout after
-  request escape or process loss after sending follows the selected D5 policy. Treat uncertain
+  request escape or process loss after sending uses bounded retry and records possible duplication. Treat uncertain
   5xx outcomes conservatively. Persist rate-limit wait; fail malformed permanent requests for
   review; pause on bot credential/configuration failure. Do not report a generic 403 as a user
   block. For a definitive private recipient block, persist local suppression and stage an
@@ -64,7 +64,7 @@ configured privately only for a separately authorized controlled test or rollout
 - Default startup remains non-sending. A future dispatch worker is explicit and remains separate
   from inbox progress/offsets. #18 owns only Notification paths; User #16 and routing #25 keep
   their ownership. No broker topic, public proxy, User schema or shared configuration edit is
-  included in this decision proposal. Record approval in a versioned skill update before runtime.
+  included in this decision proposal. Approval is recorded in skill v0016.
 
 ## Required dependency and acceptance evidence
 
@@ -75,7 +75,7 @@ string, and four recipient DB tests are missing the integration marker. Require 
 User-owned head with all 13 session/recipient integration cases selected and passing. Do not work
 around the endpoint in Notification or treat the green nine-test run as recipient acceptance.
 
-After that and owner decisions, start test-first on the pinned inbox/recipient inputs:
+After recipient acceptance, start test-first on the pinned inbox/recipient inputs:
 
 | Exercise | Required observation |
 | --- | --- |
@@ -88,4 +88,4 @@ After that and owner decisions, start test-first on the pinned inbox/recipient i
 Official technical reference checked 2026-11-05: [Telegram webhook and secret token](https://core.telegram.org/bots/api#setwebhook),
 [sendMessage](https://core.telegram.org/bots/api#sendmessage) and
 [retry_after](https://core.telegram.org/bots/api#responseparameters). The bounds and regrant
-rules above are product decisions, not Telegram requirements or already approved policy.
+rules above are owner-approved project policy.
