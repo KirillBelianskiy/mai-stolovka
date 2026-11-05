@@ -37,6 +37,9 @@ let client: QueryClient,
   postCalls: { key: string; body: string }[],
   orders: Record<string, Record<string, unknown>>,
   original: Map<string, Record<string, unknown>>,
+  walletBalance: number,
+  walletEnabled: boolean,
+  walletFails: boolean,
   hold: ((value: Response) => void) | undefined;
 const complete = vi.fn();
 function fixture(body: Record<string, unknown>, owner = state.userId) {
@@ -83,6 +86,9 @@ beforeEach(() => {
   sessionStorage.clear();
   state.userId = accountA;
   mode = "normal";
+  walletBalance = 100000;
+  walletEnabled = false;
+  walletFails = false;
   orders = {};
   original = new Map();
   postCalls = [];
@@ -98,6 +104,8 @@ beforeEach(() => {
         token = (
           options.headers as Record<string, string>
         ).Authorization.replace("Bearer ", "");
+      if (path === "/api/v1/orders/wallet")
+        return walletFails ? Response.json({}, { status: 503 }) : Response.json({ user_id: token, balance: walletBalance, currency: "RUB", demo: true, checkout_payment_enabled: walletEnabled });
       if (path.startsWith("/api/v1/orders/slots"))
         return Response.json([
           {
@@ -126,9 +134,11 @@ beforeEach(() => {
             },
             { status: 409 },
           );
+        if (mode === "insufficient") return Response.json({ detail: { code: "INSUFFICIENT_FUNDS" } }, { status: 409 });
         let order = original.get(key);
         if (!order) {
-          order = fixture(JSON.parse(body), token);
+          order = { ...fixture(JSON.parse(body), token), payment_status: walletEnabled ? "DEMO_PAID" : "NOT_REQUIRED" };
+          if (walletEnabled) walletBalance -= Number(order.total_amount);
           original.set(key, structuredClone(order));
           orders[String(order.id)] = order;
         }
@@ -152,7 +162,8 @@ beforeEach(() => {
             { status: 409 },
           );
         }
-        orders[id] = { ...order, status: "CANCELLED", version: 2 };
+        if (order.payment_status === "DEMO_PAID") walletBalance += Number(order.total_amount);
+        orders[id] = { ...order, status: "CANCELLED", version: 2, payment_status: order.payment_status === "DEMO_PAID" ? "DEMO_REFUNDED" : order.payment_status };
         return Response.json(orders[id]);
       }
       if (path.includes("?limit=10")) {
@@ -342,4 +353,60 @@ test("known created order remains visible when local journal cleanup fails", asy
   expect(readIntent(sessionStorage)).not.toBeNull();
   await screen.findByRole("article", { name: "Талон заказа" });
   expect(screen.queryByRole("button", { name: /Заказать за/ })).toBeNull();
+});
+
+
+test("demo funds and refund evidence follow server responses, not a local success counter", async () => {
+  walletEnabled = true;
+  render(<Harness />);
+  await screen.findByRole("region", { name: "Демонстрационный баланс" });
+  await submit();
+  await waitFor(() => expect(complete).toHaveBeenCalledTimes(1));
+  await screen.findAllByText("Оплачено демосредствами");
+  expect(walletBalance).toBe(85500);
+  await userEvent.click(screen.getByRole("button", { name: "Отменить заказ" }));
+  await userEvent.click(screen.getByRole("button", { name: "Да, отменить заказ" }));
+  await screen.findAllByText("Демосредства возвращены");
+  expect(walletBalance).toBe(100000);
+  expect(screen.queryByRole("button", { name: "Отменить заказ" })).toBeNull();
+});
+test("wallet outage blocks new checkout and explicit refresh recovers", async () => {
+  walletFails = true;
+  render(<Harness />);
+  await selectSlot();
+  await screen.findByText(/Не удалось обновить демобаланс/);
+  expect((screen.getByRole("button", { name: /Заказать за 145/ }) as HTMLButtonElement).disabled).toBe(true);
+  expect(postCalls).toHaveLength(0);
+  walletFails = false;
+  await userEvent.click(screen.getByRole("button", { name: "Обновить демобаланс" }));
+  await waitFor(() => expect((screen.getByRole("button", { name: /Заказать за 145/ }) as HTMLButtonElement).disabled).toBe(false));
+});
+test("insufficient funds never fabricate payment and refresh never automatically retries checkout", async () => {
+  walletEnabled = true;
+  mode = "insufficient";
+  render(<Harness />);
+  await submit();
+  await screen.findByText(/На демобалансе недостаточно средств/);
+  expect(complete).not.toHaveBeenCalled();
+  expect(readIntent(sessionStorage)).toBeNull();
+  walletBalance = 200000;
+  await userEvent.click(screen.getByRole("button", { name: "Обновить демобаланс" }));
+  expect(postCalls).toHaveLength(1);
+  expect(screen.queryByText("Оплачено демосредствами")).toBeNull();
+});
+test("unknown paid ACK keeps the original key even when wallet becomes unavailable", async () => {
+  walletEnabled = true;
+  mode = "lost";
+  render(<Harness />);
+  await submit();
+  await screen.findByRole("button", { name: "Восстановить исходный заказ" });
+  walletFails = true;
+  await userEvent.click(screen.getByRole("button", { name: "Обновить демобаланс" }));
+  await screen.findByText(/Не удалось обновить демобаланс/);
+  await userEvent.click(screen.getByRole("button", { name: "Восстановить исходный заказ" }));
+  await waitFor(() => expect(complete).toHaveBeenCalledTimes(1));
+  expect(postCalls).toHaveLength(2);
+  expect(postCalls[0]).toEqual(postCalls[1]);
+  expect(walletBalance).toBe(85500);
+  await screen.findAllByText("Оплачено демосредствами");
 });

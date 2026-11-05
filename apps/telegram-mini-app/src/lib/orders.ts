@@ -11,6 +11,22 @@ export const STATUS_LABELS = {
   CANCELLED: "Отменён",
 } as const;
 export type OrderStatus = keyof typeof STATUS_LABELS;
+export type PaymentStatus = "NOT_REQUIRED" | "DEMO_PAID" | "DEMO_REFUNDED" | "UNKNOWN";
+export function paymentLabel(status: PaymentStatus): string {
+  return {
+    NOT_REQUIRED: "Оплата не требовалась",
+    DEMO_PAID: "Оплачено демосредствами",
+    DEMO_REFUNDED: "Демосредства возвращены",
+    UNKNOWN: "Данные об оплате не получены",
+  }[status];
+}
+export type Wallet = {
+  user_id: string;
+  balance: number;
+  currency: "RUB";
+  demo: true;
+  checkout_payment_enabled: boolean;
+};
 export type Order = {
   id: string;
   order_number: string;
@@ -19,6 +35,7 @@ export type Order = {
   slot_start_time: string;
   slot_end_time: string;
   status: OrderStatus;
+  payment_status: PaymentStatus;
   total_amount: number;
   version: number;
   created_at: string;
@@ -92,6 +109,10 @@ function date(value: unknown): string {
 }
 export function decodeOrder(value: unknown, accountId: string): Order {
   const row = object(value);
+  const payment = row.payment_status === undefined ? "UNKNOWN" : row.payment_status;
+  if ((row.payment_status !== undefined && !["NOT_REQUIRED", "DEMO_PAID", "DEMO_REFUNDED"].includes(payment as string)) ||
+      (payment === "DEMO_REFUNDED" && row.status !== "CANCELLED"))
+    throw new Error("Invalid payment evidence");
   if (
     uuid(row.user_id) !== accountId ||
     typeof row.status !== "string" ||
@@ -132,6 +153,7 @@ export function decodeOrder(value: unknown, accountId: string): Order {
     slot_start_time: start,
     slot_end_time: end,
     status: row.status as OrderStatus,
+    payment_status: payment as PaymentStatus,
     total_amount: total,
     version: integer(row.version, 1),
     created_at: date(row.created_at),
@@ -173,6 +195,19 @@ async function request(
     throw new OrderApiError(response.status, code, total);
   }
   return response.json();
+}
+export async function loadWallet(
+  accountId: string,
+  token: string,
+  signal?: AbortSignal,
+  fetcher: typeof fetch = fetch,
+): Promise<Wallet> {
+  const row = object(await request("/wallet", token, { signal }, fetcher));
+  if (uuid(row.user_id) !== accountId || row.demo !== true || row.currency !== "RUB" ||
+      typeof row.checkout_payment_enabled !== "boolean")
+    throw new Error("Invalid own demo wallet");
+  return { user_id: uuid(row.user_id), balance: integer(row.balance), currency: "RUB",
+    demo: true, checkout_payment_enabled: row.checkout_payment_enabled };
 }
 export async function createOrder(
   intent: CheckoutIntent,

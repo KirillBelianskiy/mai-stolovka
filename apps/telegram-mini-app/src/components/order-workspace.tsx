@@ -30,6 +30,8 @@ import {
   loadOrder,
   loadOrders,
   loadSlots,
+  loadWallet,
+  paymentLabel,
   orderFailure,
   OrderApiError,
   STATUS_LABELS,
@@ -111,6 +113,14 @@ function CheckoutSession({
       mounted.current = false;
     };
   }, []);
+  const wallet = useQuery({
+    queryKey: ["own-orders", accountId, "wallet"],
+    queryFn: ({ signal }) => auth.withAccount(accountId, (t) => loadWallet(accountId, t, signal)),
+    retry: false,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+  });
   const slots = useInfiniteQuery({
     queryKey: ["own-orders", accountId, "slots"],
     initialPageParam: 0,
@@ -143,6 +153,7 @@ function CheckoutSession({
     selected.remaining_capacity > 0 &&
     Date.parse(selected.start_time) > Date.now() &&
     !auth.busy;
+  const paymentReady = wallet.isSuccess && !wallet.isFetching;
   async function send(saved: CheckoutIntent, recovering: boolean) {
     if (lock.current || auth.busy) return;
     lock.current = true;
@@ -208,11 +219,14 @@ function CheckoutSession({
       void slots.refetch();
     } finally {
       lock.current = false;
-      if (mounted.current) setBusy(false);
+      if (mounted.current) {
+        setBusy(false);
+        void client.invalidateQueries({ queryKey: ["own-orders", accountId, "wallet"] });
+      }
     }
   }
   function start(amount: number) {
-    if (!valid || lock.current) return;
+    if (!valid || !paymentReady || lock.current) return;
     try {
       const existing = readIntent(sessionStorage);
       if (existing) {
@@ -246,6 +260,24 @@ function CheckoutSession({
       <h3 id="checkout-heading">
         <Clock3 size={18} aria-hidden="true" /> Время выдачи
       </h3>
+      <section className="demo-wallet" aria-label="Демонстрационный баланс">
+        <div className="wallet-heading">
+          <strong>Демобаланс</strong>
+          <button className="text-button" disabled={wallet.isFetching || busy || auth.busy}
+            onClick={() => void wallet.refetch()}>Обновить демобаланс</button>
+        </div>
+        {wallet.isPending ? <p role="status">Проверяем демобаланс…</p> : null}
+        {wallet.isError ? <p role="alert">Не удалось обновить демобаланс. Данные могут быть устаревшими. Обновите баланс перед новым заказом.</p> : null}
+        {wallet.data && <>
+          <p className="wallet-amount">{money(wallet.data.balance)}</p>
+          <p>{wallet.data.checkout_payment_enabled
+            ? "При оформлении сервер спишет демосредства. Итог и доступный баланс проверяются заново."
+            : "Демооплата выключена. Для нового заказа оплата не требуется."}</p>
+          {wallet.data.checkout_payment_enabled && total !== null && wallet.data.balance < (priceApplicable ? price.total : total) &&
+            <p className="wallet-shortfall">По последним данным средств недостаточно. После пополнения обновите баланс.</p>}
+        </>}
+        <p className="order-smallprint">Это учебные средства, не реальные деньги. Пополнение выполняет администратор через API/Swagger. Баланс — по последнему обновлению.</p>
+      </section>
       {!ready ? (
         <p role="status">Проверяем незавершённые запросы…</p>
       ) : storageError ? (
@@ -375,7 +407,7 @@ function CheckoutSession({
               </p>
               <button
                 className="primary-button"
-                disabled={!valid || busy}
+                disabled={!valid || !paymentReady || busy}
                 onClick={() => start(price.total)}
               >
                 Подтвердить новую сумму {money(price.total)}
@@ -384,7 +416,7 @@ function CheckoutSession({
           ) : (
             <button
               className="primary-button checkout-submit"
-              disabled={!valid || busy}
+              disabled={!valid || !paymentReady || busy}
               onClick={() => total !== null && start(total)}
             >
               {busy
@@ -542,6 +574,7 @@ function OrderHistory({ accountId }: { accountId: string }) {
                 {STATUS_LABELS[order.status]}
               </span>
               <strong>{money(order.total_amount)}</strong>
+              <span className="payment-evidence">{paymentLabel(order.payment_status)}</span>
             </span>
           </button>
         ))}
@@ -668,6 +701,8 @@ function OrderTicket({ accountId, id }: { accountId: string; id: string }) {
             <span>Сумма заказа</span>
             <strong>{money(order.total_amount)}</strong>
           </div>
+          <p className="payment-evidence" role="status">{paymentLabel(order.payment_status)}</p>
+          {order.payment_status === "DEMO_REFUNDED" && <p className="order-smallprint">Возврат подтверждён сервером. Повторная проверка не создаёт новый возврат.</p>}
           <p className="order-smallprint">
             Покажите номер сотруднику. Статус — по последнему обновлению.
           </p>

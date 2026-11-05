@@ -1279,3 +1279,25 @@ a:focus-visible {
     justify-content: space-between;
   }
 }
+
+.demo-wallet {
+  margin: 16px 0;
+  padding: 16px;
+  border: 1px solid #c2cbd6;
+  border-radius: 16px;
+  background: #eaf1fd;
+  color: #102a56;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.wallet-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.wallet-heading button { min-height: 44px; text-align: left; }
+.wallet-amount { font-size: 26px; font-weight: 700; margin: 8px 0; }
+.wallet-shortfall { color: #8f4300; margin-top: 8px; }
+.payment-evidence { display: block; font-size: 12px; line-height: 1.5; margin-top: 8px; }
