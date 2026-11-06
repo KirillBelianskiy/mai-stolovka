@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     database_url: SecretStr | None = None
     readiness_timeout_seconds: float = Field(default=2.0, gt=0, le=10)
     kafka_bootstrap_servers: str = "localhost:9092"
+    demo_payments_enabled: bool = False
 
     jwt_public_key_base64: SecretStr | None = None
     jwt_issuer: str = "mai-food-users"

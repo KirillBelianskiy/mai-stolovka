@@ -77,6 +77,7 @@ services:
     environment:
       APP_JWT_PUBLIC_KEY_BASE64: ${JWT_PUBLIC_KEY_BASE64:-}
       APP_MENU_BASE_URL: http://menu-service:8000
+      APP_DEMO_PAYMENTS_ENABLED: ${ORDER_DEMO_PAYMENTS_ENABLED:-false}
       APP_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       APP_DATABASE_URL: postgresql+asyncpg://orders_owner:${ORDERS_DB_PASSWORD:?Set ORDERS_DB_PASSWORD in .env}@postgres:5432/orders_db
     depends_on:

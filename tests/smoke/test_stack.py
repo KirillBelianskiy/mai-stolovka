@@ -134,6 +134,9 @@ class StackSmokeTests(unittest.TestCase):
                 "order_items",
                 "idempotency_records",
                 "outbox_events",
+                "demo_wallets",
+                "demo_credit_requests",
+                "demo_ledger",
             },
         }
         for prefix, _ in DATABASES:

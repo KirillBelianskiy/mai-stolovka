@@ -9,6 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from order_service.api.health import router
 from order_service.api.orders import router as business_router
 from order_service.api.slots import router as slots_router
+from order_service.api.wallet import router as wallet_router
 from order_service.config import Settings
 from order_service.domain.orders import OrderError
 from order_service.infrastructure.database import Database
@@ -60,5 +61,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(slots_router)
     app.include_router(router)
+    app.include_router(wallet_router)
     app.include_router(business_router)
     return app
