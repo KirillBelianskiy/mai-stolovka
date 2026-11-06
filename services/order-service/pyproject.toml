@@ -12,6 +12,8 @@ dependencies = [
   "alembic>=1.14,<2",
   "pyjwt[crypto]>=2.10,<3",
   "httpx>=0.28,<1",
+  "aiokafka>=0.15,<0.16",
+  "jsonschema[format]>=4.23,<5",
 ]
 
 [build-system]
@@ -27,7 +29,6 @@ dev = [
     "httpx>=0.28,<1",
     "ruff>=0.9,<1",
     "mypy>=1.15,<2",
-    "jsonschema[format]>=4.23,<5",
 ]
 
 [tool.ruff]

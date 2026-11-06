@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from order_service.application.schemas import OrderCreate, OrderItemRead, OrderRead
+from order_service.application.wallet import debit_wallet, lock_wallet, refund_wallet
 from order_service.config import Settings
 from order_service.domain.orders import TRANSITIONS, DishSnapshot, OrderError, OrderStatus
 from order_service.infrastructure.database import Database
@@ -38,6 +39,7 @@ def view(order: Order) -> OrderRead:
         slot_end_time=order.slot.end_time,
         status=order.status,
         total_amount=order.total_amount,
+        payment_status=order.payment_status,
         version=order.version,
         created_at=order.created_at,
         updated_at=order.updated_at,
@@ -164,6 +166,9 @@ async def create_order(
                 "Confirm the current server total before ordering",
                 total_amount=total,
             )
+        # Wallet precedes the shared slot lock; no existing order is locked by creation.
+        if settings.demo_payments_enabled:
+            await lock_wallet(db, user_id)
         slot = await db.scalar(
             select(TimeSlot).where(TimeSlot.id == body.slot_id).with_for_update()
         )
@@ -186,6 +191,7 @@ async def create_order(
             slot=slot,
             status=OrderStatus.PENDING,
             total_amount=total,
+            payment_status="DEMO_PAID" if settings.demo_payments_enabled else "NOT_REQUIRED",
             version=1,
             items=[
                 OrderItem(
@@ -199,6 +205,9 @@ async def create_order(
         )
         db.add(order)
         await db.flush()
+        if order.payment_status == "DEMO_PAID":
+            await debit_wallet(db, user_id, order.id, total)
+            await db.flush()
         response = view(order).model_dump(mode="json")
         record = await db.get(IdempotencyRecord, (user_id, key))
         assert record is not None
@@ -283,6 +292,10 @@ async def cancel_order(
         )
         if order.status not in allowed:
             raise OrderError(409, "CANNOT_CANCEL", "This order can no longer be cancelled")
+        # Existing order -> wallet -> slot; creation never waits on existing orders.
+        if order.payment_status == "DEMO_PAID":
+            await refund_wallet(db, order.user_id, order.id, order.total_amount)
+            order.payment_status = "DEMO_REFUNDED"
         slot = await db.scalar(
             select(TimeSlot)
             .where(TimeSlot.id == order.slot_id)

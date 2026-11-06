@@ -2,7 +2,7 @@
 
 Stage 3 implements authenticated orders, slot administration, transactional idempotency,
 capacity reservation, immutable menu snapshots, role-based status changes/cancellation and Outbox
-persistence. Kafka publication is deferred. See [API and policies](../../docs/stages/stage-3.md).
+persistence. SCRUM-17 adds explicit standalone Outbox publication; the HTTP app never starts it. See [API and policies](../../docs/stages/stage-3.md).
 
 ```sh
 uv sync --frozen
@@ -23,3 +23,15 @@ GET /health/live identifies the process; GET /health/ready runs a bounded SELECT
 Each service owns its .venv. PostgreSQL integration tests require an isolated migrated test DB;
 from the root, run python3 infra/run-service-integration.py to create, migrate, test and remove
 throwaway User/Menu/Order databases. Do not point integration tests at valuable application data.
+
+## Explicit Outbox worker
+
+The HTTP app never starts Kafka publication. The standalone `python -m order_service.outbox`
+entrypoint and opt-in Compose `outbox` profile publish existing pending events only after explicit
+launch. A pre-existing topic and migrated orders_db are required. Read
+[worker launch, failure and rollback instructions](../../docs/stages/stage-4-outbox.md) before running;
+starting it will publish the entire pending backlog. Notification/Kitchen consumers remain deferred.
+
+SCRUM-18 adds bounded backlog samples and process-local attempt/ACK/publication/retry counters
+to the standalone worker logs. See [topic operations, diagnostics and recovery](../../docs/stages/stage-4-topic-operations.md).
+The diagnostic settings are listed in `.env.example`; they do not start the worker automatically.

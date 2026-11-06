@@ -1,7 +1,9 @@
 # Architecture overview
 
-Status: Stage 3. User/Menu APIs and transactional Order/slot/lifecycle/Outbox persistence are implemented.
-Kafka delivery, Notification/WebSocket processing and frontend flows remain deferred.
+Status: Stages 1–3 plus SCRUM-17 standalone Outbox worker, implemented for review.
+User/Menu APIs and transactional orders remain unchanged. The opt-in worker can publish existing
+v1 events; Notification/WebSocket processing and frontend flows remain deferred.
+See [Outbox launch/recovery](../stages/stage-4-outbox.md); ordinary Compose startup never launches it.
 See [authentication](authentication.md) and [Stage 3](../stages/stage-3.md).
 
 ## Components and trust boundaries
@@ -31,7 +33,7 @@ flowchart LR
   Menu --> MenuDB[(menu_db)]
   Order -->|batch menu snapshot before transaction| Menu
   Order --> OrdersDB[(orders_db)]
-  Order -. future outbox relay .-> Kafka[Kafka]
+  Order -. explicit opt-in outbox worker .-> Kafka[Kafka]
   Kafka -. future consumer .-> WS
   Kafka -. future consumer .-> Notification[Notification Service]
   Notification -. future aiogram sender .-> Telegram[Telegram Bot API]
@@ -63,7 +65,8 @@ Node 22 runs Next.js 16 / React 19 builds with Tailwind 4. Both apps have TanSta
 
 Static export excludes server actions, server-side sessions, and runtime Next.js APIs. `next/image` optimization is disabled. Fonts use a local system stack to avoid build-time network requests. Actual Telegram usage later requires an HTTPS URL; localhost HTTP is only a browser development setup.
 
-PostgreSQL uses one local instance with three logically isolated databases. Kafka uses one combined KRaft broker/controller with plaintext listeners and replication factor one: strictly local development settings. No application event topics or consumers are created yet.
+PostgreSQL uses one local instance with three logically isolated databases. Kafka uses one combined KRaft broker/controller with plaintext listeners and replication factor one: strictly local development settings. No application topic is provisioned automatically. The opt-in Outbox worker requires a pre-existing
+topic; application consumers remain deferred. Local verification uses only disposable test topics.
 
 ## Suggested ownership for five people
 
