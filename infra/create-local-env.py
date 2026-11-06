@@ -7,7 +7,13 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 target = root / ".env"
 content = (root / ".env.example").read_text()
-for key in ("POSTGRES_PASSWORD", "USERS_DB_PASSWORD", "MENU_DB_PASSWORD", "ORDERS_DB_PASSWORD"):
+for key in (
+    "POSTGRES_PASSWORD",
+    "USERS_DB_PASSWORD",
+    "MENU_DB_PASSWORD",
+    "ORDERS_DB_PASSWORD",
+    "NOTIFICATIONS_DB_PASSWORD",
+):
     content = content.replace(f"{key}=\n", f"{key}={secrets.token_hex(24)}\n")
 
 try:

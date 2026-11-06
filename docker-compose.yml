@@ -10,6 +10,7 @@ services:
       USERS_DB_PASSWORD: ${USERS_DB_PASSWORD:?Set USERS_DB_PASSWORD in .env}
       MENU_DB_PASSWORD: ${MENU_DB_PASSWORD:?Set MENU_DB_PASSWORD in .env}
       ORDERS_DB_PASSWORD: ${ORDERS_DB_PASSWORD:?Set ORDERS_DB_PASSWORD in .env}
+      NOTIFICATIONS_DB_PASSWORD: ${NOTIFICATIONS_DB_PASSWORD:?Set NOTIFICATIONS_DB_PASSWORD in .env}
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -77,6 +78,7 @@ services:
     environment:
       APP_JWT_PUBLIC_KEY_BASE64: ${JWT_PUBLIC_KEY_BASE64:-}
       APP_MENU_BASE_URL: http://menu-service:8000
+      APP_DEMO_PAYMENTS_ENABLED: ${ORDER_DEMO_PAYMENTS_ENABLED:-false}
       APP_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       APP_DATABASE_URL: postgresql+asyncpg://orders_owner:${ORDERS_DB_PASSWORD:?Set ORDERS_DB_PASSWORD in .env}@postgres:5432/orders_db
     depends_on:
@@ -105,9 +107,27 @@ services:
     build: ./services/notification-service
     environment:
       APP_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      APP_DATABASE_URL: postgresql+asyncpg://notifications_owner:${NOTIFICATIONS_DB_PASSWORD:?Set NOTIFICATIONS_DB_PASSWORD in .env}@postgres:5432/notifications_db
     depends_on:
       kafka:
         condition: service_healthy
+
+  notification-inbox:
+    profiles: [inbox]
+    build: ./services/notification-service
+    command: ["/app/.venv/bin/python", "-m", "notification_service.ingest"]
+    environment:
+      APP_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      APP_DATABASE_URL: postgresql+asyncpg://notifications_owner:${NOTIFICATIONS_DB_PASSWORD:?Set NOTIFICATIONS_DB_PASSWORD in .env}@postgres:5432/notifications_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    restart: "no"
+    stop_grace_period: 30s
 
   websocket-service:
     build: ./services/websocket-service

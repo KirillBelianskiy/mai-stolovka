@@ -92,7 +92,9 @@ rotate existing database passwords. Rotate them in PostgreSQL explicitly if data
 Kafka's plaintext, single-node configuration and the bootstrap DB administrator are local-only.
 No Kafka consumers or workers are started by the default stack. Order Service persists events in
 PostgreSQL; the explicit opt-in Outbox worker can publish them after topic provisioning. Read
-[the worker instructions](docs/stages/stage-4-outbox.md) before launch. Telegram access
+[the worker instructions](docs/stages/stage-4-outbox.md) before launch. The
+[development topic tool](docs/stages/stage-4-topic-operations.md) plans explicit provisioning
+and checks existing settings; SCRUM-18 consumer integration remains incomplete. Telegram access
 will require an HTTPS-accessible deployment and bot interaction permissions in a later stage.
 
 ## Backend development and checks

@@ -1,7 +1,9 @@
 import asyncio
 import json
 import os
+import subprocess
 from datetime import timedelta
+from pathlib import Path
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -23,6 +25,31 @@ pytestmark = pytest.mark.integration
 
 def store_for(settings) -> PostgresOutbox:
     return PostgresOutbox(settings.database_url.get_secret_value(), 1)
+
+
+def delete_probe_groups(group_ids: list[str]) -> None:
+    assert all(group.startswith("mai-test-") for group in group_ids)
+    command = [
+        "docker",
+        "compose",
+        "exec",
+        "-T",
+        "kafka",
+        "/opt/kafka/bin/kafka-consumer-groups.sh",
+        "--bootstrap-server",
+        "kafka:29092",
+        "--delete",
+    ]
+    for group_id in group_ids:
+        command.extend(["--group", group_id])
+    subprocess.run(
+        command,
+        cwd=Path(__file__).resolve().parents[3],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
 
 
 async def seed(store: PostgresOutbox, versions: int = 2, rollback: bool = False) -> list:
@@ -150,6 +177,114 @@ def test_rollback_has_nothing_to_publish(integration_settings) -> None:
     asyncio.run(run())
 
 
+def test_backlog_reports_only_pending_rows_and_clears_after_marks(integration_settings) -> None:
+    async def run() -> None:
+        store = store_for(integration_settings)
+        try:
+            assert await store.backlog() == (0, 0.0)
+            await seed(store)
+            count, age = await store.backlog()
+            assert count == 2 and age >= 2
+            await store.acquire()
+            relay = Relay(store, AsyncMock(), integration_settings)
+            assert await relay.publish_next()
+            assert (await store.backlog())[0] == 1
+            assert await relay.publish_next()
+            assert await store.backlog() == (0, 0.0)
+        finally:
+            await store.close()
+
+    asyncio.run(run())
+
+
+def test_independent_groups_receive_exact_events_and_keep_separate_offsets(
+    integration_settings,
+) -> None:
+    from aiokafka import TopicPartition
+
+    servers = os.getenv("MAI_TEST_KAFKA_BOOTSTRAP_SERVERS")
+    if not servers:
+        pytest.skip("Set MAI_TEST_KAFKA_BOOTSTRAP_SERVERS for independent group acceptance")
+
+    async def run() -> None:
+        topic = "mai-test-outbox-groups-" + uuid4().hex
+        settings = integration_settings.model_copy(
+            update={"kafka_bootstrap_servers": servers, "outbox_topic": topic}
+        )
+        admin = AIOKafkaAdminClient(bootstrap_servers=servers)
+        await admin.start()
+        group_ids = ["mai-test-notification-" + uuid4().hex, "mai-test-kitchen-" + uuid4().hex]
+        consumers = [
+            AIOKafkaConsumer(
+                topic,
+                bootstrap_servers=servers,
+                group_id=group,
+                auto_offset_reset=reset,
+                enable_auto_commit=False,
+            )
+            for group, reset in zip(group_ids, ("earliest", "latest"), strict=True)
+        ]
+        store, publisher = store_for(settings), KafkaPublisher(settings)
+        try:
+            await admin.create_topics([NewTopic(topic, num_partitions=1, replication_factor=1)])
+            rows = await seed(store)
+            for consumer in consumers:
+                await consumer.start()
+            # Assign and establish both initial positions before publishing; latest is intentional.
+            async with asyncio.timeout(15):
+                for consumer in consumers:
+                    while not consumer.assignment():
+                        await consumer.getmany(timeout_ms=100)
+                    for partition in consumer.assignment():
+                        assert await consumer.position(partition) == 0
+            await store.acquire()
+            await publisher.start()
+            relay = Relay(store, publisher, settings)
+            assert await relay.publish_next()
+            assert await relay.publish_next()
+            partition = TopicPartition(topic, 0)
+            for consumer in consumers:
+                records = [await asyncio.wait_for(consumer.getone(), 15) for _ in rows]
+                assert [json.loads(record.value) for record in records] == [
+                    r.envelope for r in rows
+                ]
+                assert all(record.key == str(rows[0].aggregate_id).encode() for record in records)
+                assert [record.offset for record in records] == [0, 1]
+                assert await consumer.committed(partition) is None
+            await consumers[0].commit({partition: 2})
+            assert await consumers[0].committed(partition) == 2
+            assert await consumers[1].committed(partition) is None
+            # A probe with the Kitchen group's valid committed position must resume there,
+            # even when its fallback reset policy is latest.
+            await consumers[1].commit({partition: 1})
+            await consumers[1].stop()
+            replacement = AIOKafkaConsumer(
+                topic,
+                bootstrap_servers=servers,
+                group_id=group_ids[1],
+                auto_offset_reset="latest",
+                enable_auto_commit=False,
+            )
+            consumers[1] = replacement
+            await replacement.start()
+            replay = await asyncio.wait_for(replacement.getone(), 15)
+            assert replay.offset == 1 and json.loads(replay.value) == rows[1].envelope
+        finally:
+            await publisher.stop()
+            await store.close()
+            for consumer in consumers:
+                await consumer.stop()
+            try:
+                delete_probe_groups(group_ids)
+            finally:
+                try:
+                    await admin.delete_topics([topic])
+                finally:
+                    await admin.close()
+
+    asyncio.run(run())
+
+
 def test_real_guard_session_loss_cancels_blocked_send(integration_settings) -> None:
     async def run() -> None:
         store = store_for(integration_settings)
@@ -204,10 +339,11 @@ def test_kafka_ack_before_mark_crash_replays_stable_envelope(integration_setting
         )
         admin = AIOKafkaAdminClient(bootstrap_servers=servers)
         await admin.start()
+        group_id = "mai-test-" + uuid4().hex
         consumer = AIOKafkaConsumer(
             topic,
             bootstrap_servers=servers,
-            group_id="mai-test-" + uuid4().hex,
+            group_id=group_id,
             auto_offset_reset="earliest",
             enable_auto_commit=False,
         )
@@ -252,8 +388,13 @@ def test_kafka_ack_before_mark_crash_replays_stable_envelope(integration_setting
             await publisher.stop()
             await store.close()
             await consumer.stop()
-            await admin.delete_topics([topic])
-            await admin.close()
+            try:
+                delete_probe_groups([group_id])
+            finally:
+                try:
+                    await admin.delete_topics([topic])
+                finally:
+                    await admin.close()
 
     asyncio.run(run())
 

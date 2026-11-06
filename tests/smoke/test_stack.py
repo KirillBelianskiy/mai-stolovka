@@ -12,7 +12,12 @@ from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[2]
 SERVICES = ("user", "menu", "order", "notification", "websocket")
-DATABASES = (("users", "user"), ("menu", "menu"), ("orders", "order"))
+DATABASES = (
+    ("users", "user"),
+    ("menu", "menu"),
+    ("orders", "order"),
+    ("notifications", "notification"),
+)
 
 
 def compose(
@@ -57,7 +62,7 @@ class StackSmokeTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.mini = origin(8080)
         cls.kitchen = origin(8081)
-        for service in ("user", "menu", "order"):
+        for service in ("user", "menu", "order", "notification"):
             compose(
                 "run",
                 "--rm",
@@ -128,12 +133,23 @@ class StackSmokeTests(unittest.TestCase):
         expected = {
             "users": {"users", "staff_credentials"},
             "menu": {"categories", "menu_items"},
+            "notifications": {
+                "source_checkpoints",
+                "source_receipts",
+                "notification_inbox",
+                "order_observations",
+                "observed_versions",
+                "ready_obligations",
+            },
             "orders": {
                 "time_slots",
                 "orders",
                 "order_items",
                 "idempotency_records",
                 "outbox_events",
+                "demo_wallets",
+                "demo_credit_requests",
+                "demo_ledger",
             },
         }
         for prefix, _ in DATABASES:

@@ -31,3 +31,7 @@ entrypoint and opt-in Compose `outbox` profile publish existing pending events o
 launch. A pre-existing topic and migrated orders_db are required. Read
 [worker launch, failure and rollback instructions](../../docs/stages/stage-4-outbox.md) before running;
 starting it will publish the entire pending backlog. Notification/Kitchen consumers remain deferred.
+
+SCRUM-18 adds bounded backlog samples and process-local attempt/ACK/publication/retry counters
+to the standalone worker logs. See [topic operations, diagnostics and recovery](../../docs/stages/stage-4-topic-operations.md).
+The diagnostic settings are listed in `.env.example`; they do not start the worker automatically.

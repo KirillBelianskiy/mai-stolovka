@@ -2,8 +2,9 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from importlib.resources import files
+from time import monotonic
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -47,11 +48,24 @@ class Publisher(Protocol):
     async def publish(self, key: bytes, value: bytes) -> None: ...
 
 
+@dataclass
+class PublicationStats:
+    """Process-local counters; a broker ACK and a durable mark are distinct events."""
+
+    attempts: int = 0
+    acks: int = 0
+    published: int = 0
+    retries: int = 0
+    ack_latency_ms: float = 0.0
+    last_success: datetime | None = None
+
+
 class Relay:
     def __init__(self, store: EventStore, publisher: Publisher, settings: Settings) -> None:
         self.store = store
         self.publisher = publisher
         self.settings = settings
+        self.stats = PublicationStats()
         schema = json.loads(files("order_service").joinpath("resources/events-v1.json").read_text())
         self.validator = Draft202012Validator(schema, format_checker=FormatChecker())
 
@@ -86,12 +100,18 @@ class Relay:
         )
         value = self.serialize(row)
         await self.store.check_guard()
+        self.stats.attempts += 1
+        started = monotonic()
         try:
             async with asyncio.timeout(self.settings.outbox_send_timeout_seconds):
                 await self.publisher.publish(str(row.aggregate_id).encode("utf-8"), value)
         except TimeoutError:
             raise AmbiguousPublication("Send deadline exceeded; event remains pending") from None
+        self.stats.acks += 1
+        self.stats.ack_latency_ms = (monotonic() - started) * 1000
         await self.store.check_guard()
         await self.store.mark_published(row)
+        self.stats.published += 1
+        self.stats.last_success = datetime.now(UTC)
         logger.info("event_published event_id=%s", row.event_id)
         return True

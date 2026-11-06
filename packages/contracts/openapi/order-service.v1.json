@@ -23,6 +23,64 @@
         "title": "CartLine",
         "type": "object"
       },
+      "DemoCreditInput": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 2147483647.0,
+            "title": "Amount",
+            "type": "integer"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "amount"
+        ],
+        "title": "DemoCreditInput",
+        "type": "object"
+      },
+      "DemoCreditRead": {
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "integer"
+          },
+          "balance_after": {
+            "title": "Balance After",
+            "type": "integer"
+          },
+          "demo": {
+            "const": true,
+            "default": true,
+            "title": "Demo",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "amount",
+          "balance_after"
+        ],
+        "title": "DemoCreditRead",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -173,6 +231,16 @@
           },
           "order_number": {
             "title": "Order Number",
+            "type": "string"
+          },
+          "payment_status": {
+            "default": "NOT_REQUIRED",
+            "enum": [
+              "NOT_REQUIRED",
+              "DEMO_PAID",
+              "DEMO_REFUNDED"
+            ],
+            "title": "Payment Status",
             "type": "string"
           },
           "slot_end_time": {
@@ -384,6 +452,42 @@
           "expected_version"
         ],
         "title": "VersionInput",
+        "type": "object"
+      },
+      "WalletRead": {
+        "properties": {
+          "balance": {
+            "title": "Balance",
+            "type": "integer"
+          },
+          "checkout_payment_enabled": {
+            "title": "Checkout Payment Enabled",
+            "type": "boolean"
+          },
+          "currency": {
+            "const": "RUB",
+            "default": "RUB",
+            "title": "Currency",
+            "type": "string"
+          },
+          "demo": {
+            "const": true,
+            "default": true,
+            "title": "Demo",
+            "type": "boolean"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "balance",
+          "checkout_payment_enabled"
+        ],
+        "title": "WalletRead",
         "type": "object"
       }
     },
@@ -808,6 +912,90 @@
         "summary": "Update Slot",
         "tags": [
           "slots"
+        ]
+      }
+    },
+    "/wallet": {
+      "get": {
+        "operationId": "balance_wallet_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Balance",
+        "tags": [
+          "demo payments"
+        ]
+      }
+    },
+    "/wallet/credits": {
+      "post": {
+        "operationId": "credit_wallet_credits_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DemoCreditInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoCreditRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Credit synthetic demo funds (ADMIN only)",
+        "tags": [
+          "demo payments"
         ]
       }
     },

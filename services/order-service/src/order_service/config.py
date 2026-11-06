@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     database_url: SecretStr | None = None
     readiness_timeout_seconds: float = Field(default=2.0, gt=0, le=10)
     kafka_bootstrap_servers: str = "localhost:9092"
+    demo_payments_enabled: bool = False
 
     jwt_public_key_base64: SecretStr | None = None
     jwt_issuer: str = "mai-food-users"
@@ -25,3 +26,6 @@ class Settings(BaseSettings):
     outbox_send_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
     outbox_shutdown_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
     outbox_guard_interval_seconds: float = Field(default=1.0, gt=0, le=5)
+    outbox_metrics_interval_seconds: float = Field(default=30.0, gt=0, le=300)
+    outbox_backlog_alert_seconds: float = Field(default=60.0, gt=0, le=86400)
+    outbox_retry_alert_seconds: float = Field(default=300.0, gt=0, le=86400)
