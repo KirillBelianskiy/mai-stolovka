@@ -18,6 +18,7 @@ import {
   Trash2,
   UtensilsCrossed,
 } from "lucide-react";
+import { CheckoutPanel, OrdersPanel } from "@/components/order-workspace";
 import { ProfilePanel } from "@/components/profile-panel";
 import { useEffect, useState } from "react";
 import {
@@ -153,6 +154,7 @@ export function MenuApp() {
               {quantity > 99 ? "99+" : quantity}
             </span>
           </a>
+          <a href="#orders">Заказы</a>
           <a href="#profile">Профиль</a>
         </nav>
         <span className="header-note">Хороший обед — по плану.</span>
@@ -483,6 +485,26 @@ export function MenuApp() {
                 </button>
               </>
             )}
+            <CheckoutPanel
+              cart={cart}
+              total={total}
+              onComplete={(intent) => {
+                setCart((current) => {
+                  const lines = current
+                    .map((line) => ({
+                      menu_item_id: line.id,
+                      quantity: line.quantity,
+                    }))
+                    .sort((a, b) =>
+                      a.menu_item_id.localeCompare(b.menu_item_id),
+                    );
+                  return JSON.stringify(lines) ===
+                    JSON.stringify(intent.body.items)
+                    ? []
+                    : current;
+                });
+              }}
+            />
             <div className="cart-storage">
               <Check size={14} aria-hidden="true" />
               <span>
@@ -491,6 +513,7 @@ export function MenuApp() {
             </div>
           </aside>
         </div>
+        <OrdersPanel />
         <ProfilePanel />
         <div className="sr-only" role="status" aria-live="polite">
           {notice}

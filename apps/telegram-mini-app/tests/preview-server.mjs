@@ -39,38 +39,75 @@ const mime = {
   ".json": "application/json",
   ".ico": "image/x-icon",
 };
+const lostCheckoutKeys = new Set();
 const server = createServer(async (request, response) => {
   const url = new URL(request.url, "http://127.0.0.1");
-  // Optional same-origin proxy for a disposable User Service, never the deployed API.
-  if (process.env.MAI_USER_TEST_URL && url.pathname.startsWith("/api/v1/users/")) {
+  const scenario = new URL(
+    request.headers.referer ?? "http://127.0.0.1",
+  ).searchParams.get("scenario");
+  // Optional same-origin proxies for explicitly launched disposable services only.
+  const prefix = url.pathname.startsWith("/api/v1/users/")
+    ? "/api/v1/users"
+    : "/api/v1/orders";
+  const testUrl = prefix.endsWith("users")
+    ? process.env.MAI_USER_TEST_URL
+    : process.env.MAI_ORDER_TEST_URL;
+  if (testUrl && url.pathname.startsWith(prefix + "/")) {
     try {
-      const target = new URL(process.env.MAI_USER_TEST_URL);
-      if (!["localhost", "127.0.0.1"].includes(target.hostname)) throw new Error("Local only");
+      const target = new URL(testUrl);
+      if (!["localhost", "127.0.0.1"].includes(target.hostname))
+        throw new Error("Local only");
       const headers = {};
-      for (const name of ["authorization", "cookie", "origin", "content-type"]) {
+      for (const name of [
+        "authorization",
+        "cookie",
+        "origin",
+        "content-type",
+        "idempotency-key",
+      ]) {
         if (request.headers[name]) headers[name] = request.headers[name];
       }
       const chunks = [];
       for await (const chunk of request) chunks.push(chunk);
-      const result = await fetch(new URL(url.pathname.replace("/api/v1/users", "") + url.search, target), {
-        method: request.method,
-        headers,
-        body: ["GET", "HEAD"].includes(request.method) ? undefined : Buffer.concat(chunks),
-        redirect: "error",
-        signal: AbortSignal.timeout(10000),
-      });
+      const result = await fetch(
+        new URL(url.pathname.replace(prefix, "") + url.search, target),
+        {
+          method: request.method,
+          headers,
+          body: ["GET", "HEAD"].includes(request.method)
+            ? undefined
+            : Buffer.concat(chunks),
+          redirect: "error",
+          signal: AbortSignal.timeout(10000),
+        },
+      );
+      const payload = Buffer.from(await result.arrayBuffer());
+      const key = request.headers["idempotency-key"];
+      // Simulate losing an ACK only after the real service has committed/responded.
+      if (
+        scenario === "lost-checkout" &&
+        url.pathname === "/api/v1/orders/" &&
+        request.method === "POST" &&
+        result.status === 201 &&
+        key &&
+        !lostCheckoutKeys.has(key)
+      ) {
+        lostCheckoutKeys.add(key);
+        request.socket.destroy();
+        return;
+      }
       response.writeHead(result.status, {
-        "Content-Type": result.headers.get("content-type") ?? "application/json",
+        "Content-Type":
+          result.headers.get("content-type") ?? "application/json",
         "Cache-Control": "no-store",
         "Set-Cookie": result.headers.getSetCookie(),
       });
-      response.end(Buffer.from(await result.arrayBuffer()));
-    } catch { response.writeHead(502).end("Disposable User Service unavailable"); }
+      response.end(payload);
+    } catch {
+      response.writeHead(502).end("Disposable User Service unavailable");
+    }
     return;
   }
-  const scenario = new URL(
-    request.headers.referer ?? "http://127.0.0.1",
-  ).searchParams.get("scenario");
   function json(body, status = 200) {
     response.writeHead(status, {
       "Content-Type": "application/json",
