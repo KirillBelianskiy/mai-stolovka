@@ -37,6 +37,12 @@ jobs:
           docker run --rm --entrypoint /app/.venv/bin/python mai-order-service:ci
           -c 'import order_service.outbox; import json; from importlib.resources import files;
           assert json.loads(files("order_service").joinpath("resources/events-v1.json").read_text())["$id"] == "urn:mai-food:events:envelope:1"'
+      - name: Verify standalone inbox runtime and bundled schema
+        if: matrix.service == 'notification-service'
+        run: >-
+          docker run --rm --entrypoint /app/.venv/bin/python mai-notification-service:ci
+          -c 'import notification_service.ingest; import json; from importlib.resources import files;
+          assert json.loads(files("notification_service").joinpath("resources/events-v1.json").read_text())["$id"] == "urn:mai-food:events:envelope:1"'
 
   frontend:
     runs-on: ubuntu-latest
@@ -84,6 +90,7 @@ jobs:
       - run: uv sync --frozen --project services/user-service
       - run: uv sync --frozen --project services/menu-service
       - run: uv sync --frozen --project services/order-service
+      - run: uv sync --frozen --project services/notification-service
       - run: python infra/run-service-integration.py
       - run: python -m unittest discover -s tests/smoke -v
       - name: Show service logs on failure
