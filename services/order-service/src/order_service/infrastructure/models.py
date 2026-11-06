@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -47,6 +47,10 @@ class Order(Base):
     __table_args__ = (
         CheckConstraint("total_amount >= 0", name="nonnegative_total"),
         CheckConstraint("version > 0", name="positive_order_version"),
+        CheckConstraint(
+            "payment_status IN ('NOT_REQUIRED','DEMO_PAID','DEMO_REFUNDED')",
+            name="order_payment_status",
+        ),
         Index("ix_orders_user_created", "user_id", "created_at"),
         Index("ix_orders_status_created", "status", "created_at"),
     )
@@ -60,6 +64,9 @@ class Order(Base):
         Enum(OrderStatus, native_enum=False, create_constraint=True, name="order_status")
     )
     total_amount: Mapped[int]
+    payment_status: Mapped[Literal["NOT_REQUIRED", "DEMO_PAID", "DEMO_REFUNDED"]] = mapped_column(
+        String(16), default="NOT_REQUIRED", server_default="NOT_REQUIRED"
+    )
     version: Mapped[int] = mapped_column(default=1, server_default=text("1"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -108,3 +115,51 @@ class OutboxEvent(Base):
     envelope: Mapped[dict[str, Any]] = mapped_column(JSONB)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class DemoWallet(Base):
+    __tablename__ = "demo_wallets"
+    __table_args__ = (
+        CheckConstraint(
+            "balance >= 0 AND balance <= total_credited AND total_credited <= 2147483647",
+            name="demo_wallet_bounds",
+        ),
+    )
+    user_id: Mapped[UUID] = mapped_column(primary_key=True)
+    balance: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+    total_credited: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+
+
+class DemoCreditRequest(Base):
+    __tablename__ = "demo_credit_requests"
+    key: Mapped[UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[UUID]
+    amount: Mapped[int]
+    actor_id: Mapped[UUID]
+    response_body: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+
+
+class DemoLedger(Base):
+    __tablename__ = "demo_ledger"
+    __table_args__ = (
+        CheckConstraint("amount >= 0", name="demo_ledger_nonnegative_amount"),
+        CheckConstraint("kind IN ('CREDIT','DEBIT','REFUND')", name="demo_ledger_kind"),
+        CheckConstraint(
+            "(kind = 'CREDIT' AND credit_key IS NOT NULL AND order_id IS NULL "
+            "AND actor_id IS NOT NULL AND amount > 0) OR "
+            "(kind IN ('DEBIT','REFUND') AND order_id IS NOT NULL AND credit_key IS NULL)",
+            name="demo_ledger_reference",
+        ),
+        UniqueConstraint("order_id", "kind", name="demo_order_ledger_once"),
+        UniqueConstraint("credit_key", name="demo_credit_ledger_once"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("demo_wallets.user_id", ondelete="RESTRICT"))
+    kind: Mapped[str] = mapped_column(String(6))
+    amount: Mapped[int]
+    order_id: Mapped[UUID | None] = mapped_column(ForeignKey("orders.id", ondelete="RESTRICT"))
+    credit_key: Mapped[UUID | None] = mapped_column(
+        ForeignKey("demo_credit_requests.key", ondelete="RESTRICT")
+    )
+    actor_id: Mapped[UUID | None]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
