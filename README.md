@@ -99,6 +99,12 @@ will require an HTTPS-accessible deployment and bot interaction permissions in a
 
 ## Backend development and checks
 
+Ruff enforces the stable `pycodestyle` PEP 8 error (`E`) and warning (`W`) rules in the root
+project and all five services, alongside the existing `F`, `I`, `UP`, and `B` checks.
+The project keeps its 100-character line limit. `ruff format --check` verifies formatting
+separately. Both checks run in GitHub Actions and fail the job on violations.
+See the [official Ruff rule catalog](https://docs.astral.sh/ruff/rules/#pycodestyle-e-w).
+
 Example for User Service; repeat in each of the five service directories:
 
 ```sh
@@ -160,6 +166,7 @@ TanStack Query providers are prepared; Zustand and the Mini App SDK are installe
 ```sh
 uv sync --frozen
 uv run --frozen ruff check infra tests
+uv run --frozen ruff format --check infra tests
 uv run --frozen python -m unittest discover -s tests/contracts -v
 ```
 
