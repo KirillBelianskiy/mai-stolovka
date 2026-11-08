@@ -29,8 +29,25 @@ def auth_keys() -> tuple[bytes, bytes]:
     )
 
 
+@pytest.fixture(scope="module")
+def notification_keys() -> tuple[bytes, bytes]:
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    return (
+        key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ),
+        key.public_key().public_bytes(
+            serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+        ),
+    )
+
+
 @pytest.fixture
-def integration_settings(auth_keys: tuple[bytes, bytes]) -> Settings:
+def integration_settings(
+    auth_keys: tuple[bytes, bytes], notification_keys: tuple[bytes, bytes]
+) -> Settings:
     url = os.environ.get("MAI_TEST_DATABASE_URL")
     if not url:
         pytest.skip(
@@ -40,18 +57,25 @@ def integration_settings(auth_keys: tuple[bytes, bytes]) -> Settings:
     async def clear() -> None:
         connection = await asyncpg.connect(url.replace("postgresql+asyncpg://", "postgresql://"))
         try:
-            await connection.execute("TRUNCATE user_sessions, staff_credentials, users CASCADE")
+            await connection.execute(
+                "TRUNCATE telegram_update_receipts, user_sessions, staff_credentials, users CASCADE"
+            )
         finally:
             await connection.close()
 
     asyncio.run(clear())
     private, public = auth_keys
+    _, notification_public = notification_keys
     return Settings(
         database_url=SecretStr(url),
         jwt_public_key_base64=SecretStr(base64.b64encode(public).decode()),
         jwt_private_key_base64=SecretStr(base64.b64encode(private).decode()),
         telegram_bot_token=SecretStr("integration-test-only-bot"),
         session_cookie_allowed_origins="https://testserver",
+        notification_service_public_key_base64=SecretStr(
+            base64.b64encode(notification_public).decode()
+        ),
+        telegram_webhook_secret=SecretStr("integration-only-webhook-secret"),
     )
 
 
