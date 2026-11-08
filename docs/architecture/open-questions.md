@@ -38,3 +38,15 @@ These are explicit follow-up decisions. Nothing in the placeholder UI answers th
 4. Integrate both frontends with existing User/Menu/Order contracts and explicit price confirmation.
 
 Five-person ownership is suggested in the overview. A feature is not complete merely because its happy-path UI exists; its owning service must enforce its invariants and authorization.
+
+## Current design review
+
+Stages 4–6 are design-only under SCRUM-12. The [integration register](../stages/stages-4-6-design.md)
+tracks historical peer READBACK and current sole-author reconciliation separately from owner approval
+and implementation. Skill v0007 records the owner-authorized sequential takeover on 2026-11-01. Notification durable state,
+recipient/permission and service-auth interfaces, stale READY policy, topic operations, WebSocket
+auth/protocol and frontend credential/recovery choices remain proposal gates until explicitly resolved.
+
+The consolidated D1–D10 decision register links each recommendation to its dependent implementation
+tickets. Notification/frontend designs now exist as product PRs #6/#7; no departed-agent ACK is
+required. Storage/service-auth, Telegram ambiguity and browser journal choices still need owner review.

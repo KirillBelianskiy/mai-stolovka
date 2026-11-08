@@ -5,6 +5,10 @@ User/Menu APIs and transactional orders remain unchanged. The opt-in worker can 
 v1 events; Notification/WebSocket processing and frontend flows remain deferred.
 See [Outbox launch/recovery](../stages/stage-4-outbox.md); ordinary Compose startup never launches it.
 See [authentication](authentication.md) and [Stage 3](../stages/stage-3.md).
+Stages 4–6 designs are published for review. The owner transferred the remaining Notification/
+frontend designs to kirill_bel for sequential completion on 2026-11-01; see the
+[design integration register](../stages/stages-4-6-design.md) for owners, proposals and review gates.
+Design progress does not change the implemented runtime status above.
 
 ## Components and trust boundaries
 
