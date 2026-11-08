@@ -1075,7 +1075,7 @@ a:focus-visible {
   background: #fffdf8;
 }
 .orders-section h2 {
-  font-family: Georgia, serif;
+  font-family: "Manrope", sans-serif;
   font-size: 34px;
   margin: 6px 0 0;
   letter-spacing: -1px;
@@ -1178,7 +1178,7 @@ a:focus-visible {
   color: #5e6a7f;
 }
 .order-ticket h3 {
-  font-family: Georgia, serif;
+  font-family: "Manrope", sans-serif;
   font-size: 32px;
   letter-spacing: -1px;
   margin: 20px 0 12px;
@@ -2108,4 +2108,12 @@ h1,
   justify-content: space-between;
   gap: 12px;
   line-height: 1.5;
+}
+
+.profile-section,
+.orders-section {
+  background: transparent;
+}
+.order-status {
+  border-radius: 8px;
 }
