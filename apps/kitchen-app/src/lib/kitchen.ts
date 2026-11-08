@@ -28,6 +28,7 @@ export type Order = {
   slot_end_time: string;
   status: OrderStatus;
   total_amount: number;
+  payment_status?: "NOT_REQUIRED" | "DEMO_PAID" | "DEMO_REFUNDED";
   version: number;
   created_at: string;
   items: Array<{

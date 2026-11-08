@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./fonts.css";
 
 :root {
   --background: #f5f6f4;
@@ -208,4 +209,537 @@ button:focus-visible, input:focus-visible { outline: 3px solid #81b99a; outline-
   .admin-item-form .span-all { grid-column: auto; }
   .admin-table { min-width: 560px; }
   .slots-table { min-width: 430px; }
+}
+
+/* Penpot presentation 02: 184px navy navigation, 32px gutters, queue + working ticket. */
+:root {
+  --background: #f8f5ec;
+  --foreground: #102a56;
+  --card-foreground: #102a56;
+  --primary: #0057d9;
+  --muted: #eaf1fd;
+  --muted-foreground: #526279;
+  --border: #c2cbd6;
+  --ring: #8a3ffc;
+}
+body {
+  font-family: "Manrope", sans-serif;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid #8a3ffc;
+  outline-offset: 3px;
+}
+.primary-button,
+.secondary-button {
+  min-height: 48px;
+  border-radius: 16px;
+  font-size: 15px;
+  padding: 12px 20px;
+  font-weight: 700;
+}
+.primary-button:hover:not(:disabled) {
+  background: #0048b5;
+  transform: none;
+}
+.login-card {
+  background: #fff;
+  color: #102a56;
+  border-radius: 24px;
+  border: 0;
+  box-shadow: none;
+}
+.brand-mark {
+  background: #eaf1fd;
+  color: #0271ff;
+}
+.login-form input {
+  border-radius: 16px;
+  min-height: 48px;
+}
+.kitchen-shell {
+  display: grid;
+  grid-template-columns: 184px minmax(0, 1fr);
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  margin: 0;
+  background: #f8f5ec;
+  min-height: 100dvh;
+}
+.staff-sidebar {
+  background: #102a56;
+  color: #fff;
+  min-height: 100dvh;
+  padding: 28px 12px 24px;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+}
+.staff-brand {
+  padding: 0 12px;
+}
+.staff-brand .wing-mark {
+  color: #d6f36b;
+  display: block;
+  margin-bottom: 28px;
+}
+.staff-brand strong {
+  font-size: 24px;
+  font-weight: 800;
+}
+.staff-brand > span {
+  display: block;
+  font:
+    500 11px/1.5 "IBM Plex Mono",
+    monospace;
+  color: #c5d5ee;
+  margin-top: 14px;
+}
+.staff-sidebar nav {
+  display: grid;
+  gap: 12px;
+  margin-top: 56px;
+}
+.staff-sidebar nav button {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: white;
+  background: none;
+  border: 0;
+  padding: 14px;
+  min-height: 52px;
+  border-radius: 16px;
+  text-align: left;
+  font-size: 15px;
+  font-weight: 600;
+}
+.staff-sidebar nav button[aria-current="page"] {
+  background: #0057d9;
+}
+.staff-sidebar nav button:hover {
+  background: #214273;
+}
+.sidebar-aircraft {
+  width: 140px;
+  color: #526f99;
+  margin: auto 10px 28px;
+  min-height: 100px;
+}
+.staff-account {
+  margin: auto 12px 0;
+  display: grid;
+  gap: 8px;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.staff-account > span {
+  color: #c5d5ee;
+}
+.staff-account button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  color: white;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+.staff-content {
+  min-width: 0;
+  padding: 32px;
+}
+.workspace-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+.workspace-heading h1 {
+  font-size: 30px;
+  line-height: 1.5;
+  letter-spacing: -0.025em;
+  font-weight: 800;
+  margin: 0;
+}
+.workspace-heading p {
+  margin: 14px 0 0;
+  color: #526279;
+  font-size: 14px;
+}
+.workspace-clock {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  padding-top: 10px;
+  font:
+    500 12px "IBM Plex Mono",
+    monospace;
+  color: #526279;
+}
+.workspace-clock button {
+  border: 0;
+  background: transparent;
+  color: #0057d9;
+  padding: 0;
+  min-width: 30px;
+  min-height: 30px;
+}
+.shift-summary {
+  min-height: 64px;
+  padding: 16px 18px;
+  background: white;
+  border-radius: 16px;
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.shift-summary strong {
+  font-size: 17px;
+}
+.shift-summary > span {
+  color: #15704a;
+  font-size: 15px;
+  font-weight: 600;
+}
+.shift-summary small {
+  font-size: 12px;
+  color: #526279;
+}
+.dispatch-layout {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.72fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.dispatch-list {
+  padding: 20px 12px;
+  border-radius: 24px;
+  background: white;
+  min-height: 516px;
+}
+.dispatch-list h2 {
+  margin: 0 8px;
+  font-size: 18px;
+  font-weight: 800;
+}
+.dispatch-list-caption {
+  font:
+    400 10px "IBM Plex Mono",
+    monospace;
+  margin: 16px 8px 20px;
+  color: #526279;
+}
+.dispatch-row {
+  width: 100%;
+  display: grid;
+  gap: 8px;
+  border: 0;
+  color: #102a56;
+  background: white;
+  border-radius: 16px;
+  padding: 14px;
+  text-align: left;
+}
+.dispatch-row[aria-pressed="true"] {
+  background: #eaf1fd;
+}
+.dispatch-row strong {
+  font:
+    700 18px "IBM Plex Mono",
+    monospace;
+  overflow-wrap: anywhere;
+}
+.dispatch-row > span {
+  font-size: 12px;
+  color: #526279;
+}
+.dispatch-row small {
+  font-size: 12px;
+}
+.dispatch-status.status-pending {
+  background: none;
+  color: #0057d9;
+}
+.dispatch-status.status-preparing {
+  background: none;
+  color: #0057d9;
+}
+.dispatch-status.status-ready {
+  background: none;
+  color: #15704a;
+}
+.working-ticket {
+  min-width: 0;
+  background: white;
+  border-radius: 24px;
+  padding: 24px;
+  min-height: 516px;
+}
+.working-ticket h2 {
+  font:
+    700 clamp(24px, 3vw, 34px) / 1.3 "IBM Plex Mono",
+    monospace;
+  overflow-wrap: anywhere;
+  margin: 0 0 20px;
+}
+.working-ticket .status-pill {
+  display: inline-flex;
+  min-width: 160px;
+  border-radius: 10px;
+  font-size: 12px;
+  padding: 8px 12px;
+}
+.working-ticket h3 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 26px 0 8px;
+}
+.working-ticket-date {
+  font-size: 12px;
+  color: #526279;
+  margin: 0 0 28px;
+}
+.working-ticket-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+.working-ticket-items li {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 16px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.working-ticket-items strong {
+  white-space: nowrap;
+  font-weight: 500;
+}
+.working-ticket-total {
+  font-size: 18px;
+  font-weight: 800;
+  margin: 28px 0 8px;
+}
+.staff-payment {
+  font-size: 12px;
+  color: #526279;
+  line-height: 1.5;
+}
+.working-guidance {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  background: #eaf1fd;
+  padding: 16px;
+  border-radius: 16px;
+  margin: 28px 0;
+}
+.working-guidance > svg {
+  flex: none;
+  color: #0271ff;
+}
+.working-guidance strong {
+  font-size: 15px;
+}
+.working-guidance p {
+  font-size: 13px;
+  color: #526279;
+  line-height: 1.5;
+  margin: 8px 0 0;
+}
+.working-actions {
+  display: grid;
+  gap: 12px;
+}
+.working-actions .primary-button {
+  width: 100%;
+}
+.working-empty {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  padding: 100px 0;
+  color: #526279;
+}
+.working-empty h2 {
+  font-family: "Manrope", sans-serif;
+  color: #102a56;
+  font-size: 24px;
+  margin-top: 24px;
+}
+.working-empty p {
+  line-height: 1.6;
+}
+.admin-panel {
+  padding: 0;
+}
+.admin-panel-heading h2 {
+  display: none;
+}
+.admin-section {
+  border: 0;
+  border-radius: 24px;
+}
+.admin-inline-form label,
+.admin-item-form label {
+  color: #102a56;
+}
+.admin-inline-form input,
+.admin-item-form input,
+.admin-item-form select,
+.admin-item-form textarea {
+  min-height: 44px;
+  border-radius: 12px;
+}
+@media (min-width: 1400px) {
+  .staff-content {
+    max-width: 1450px;
+    width: 100%;
+    margin: 0 auto;
+  }
+}
+@media (max-width: 1050px) {
+  .shift-summary small {
+    max-width: 135px;
+  }
+  .dispatch-layout {
+    grid-template-columns: minmax(220px, 0.72fr) minmax(0, 1fr);
+    gap: 20px;
+  }
+  .workspace-clock {
+    font-size: 10px;
+  }
+  .working-ticket {
+    padding: 24px;
+  }
+}
+@media (max-width: 850px) {
+  .kitchen-shell {
+    grid-template-columns: 152px minmax(0, 1fr);
+    padding: 0;
+  }
+  .staff-content {
+    padding: 24px;
+  }
+  .staff-brand strong {
+    font-size: 20px;
+  }
+  .staff-sidebar {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .staff-sidebar nav button {
+    gap: 8px;
+    font-size: 13px;
+  }
+  .sidebar-aircraft {
+    width: 110px;
+  }
+  .dispatch-layout {
+    grid-template-columns: 1fr;
+  }
+  .dispatch-list {
+    min-height: 0;
+  }
+  .dispatch-row {
+    margin-bottom: 6px;
+  }
+  .workspace-heading {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .workspace-clock {
+    padding-top: 0;
+  }
+  .shift-summary {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 560px) {
+  .kitchen-shell {
+    display: block;
+    padding: 0;
+  }
+  .staff-sidebar {
+    min-height: auto;
+    height: auto;
+    position: static;
+    padding: 16px;
+  }
+  .staff-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0;
+  }
+  .staff-brand .wing-mark {
+    margin: 0;
+  }
+  .staff-brand > span {
+    margin: 0 0 0 auto;
+    font-size: 9px;
+  }
+  .staff-sidebar nav {
+    display: flex;
+    gap: 4px;
+    margin-top: 18px;
+    overflow-x: auto;
+  }
+  .staff-sidebar nav button {
+    flex: 1 0 auto;
+    flex-direction: column;
+    padding: 8px;
+    min-height: 48px;
+    font-size: 11px;
+    gap: 6px;
+  }
+  .sidebar-aircraft {
+    display: none;
+  }
+  .staff-account {
+    display: flex;
+    align-items: center;
+    margin: 16px 0 0;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .staff-account button {
+    margin-left: auto;
+  }
+  .staff-content {
+    padding: 24px 16px;
+  }
+  .workspace-heading h1 {
+    font-size: 26px;
+  }
+  .workspace-heading p {
+    margin-top: 8px;
+  }
+  .working-ticket {
+    padding: 24px 20px;
+  }
+  .shift-summary small {
+    max-width: none;
+  }
 }

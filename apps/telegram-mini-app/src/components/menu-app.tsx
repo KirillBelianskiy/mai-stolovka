@@ -13,14 +13,18 @@ import {
   Minus,
   Plus,
   RotateCcw,
-  ShoppingBag,
   Soup,
   Trash2,
-  UtensilsCrossed,
+  MapPin,
+  Search,
+  Ticket,
+  UserRound,
+  Utensils,
+  X,
 } from "lucide-react";
 import { CheckoutPanel, OrdersPanel } from "@/components/order-workspace";
 import { ProfilePanel } from "@/components/profile-panel";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CART_KEY,
   MAX_INTEGER,
@@ -38,7 +42,28 @@ import {
   type MenuItem,
 } from "@/lib/menu";
 
+type View = "venue" | "menu" | "cart" | "orders" | "profile";
+
+function currentView(): View {
+  const hash = window.location.hash.slice(1);
+  return ["venue", "menu", "cart", "orders", "profile"].includes(hash)
+    ? (hash as View)
+    : "menu";
+}
+
 export function MenuApp() {
+  const [view, setView] = useState<View>("menu");
+  const [search, setSearch] = useState("");
+  const [selectedDish, setSelectedDish] = useState<MenuItem | null>(null);
+  useEffect(() => {
+    const navigate = () => {
+      setView(currentView());
+      window.scrollTo(0, 0);
+    };
+    navigate();
+    window.addEventListener("hashchange", navigate);
+    return () => window.removeEventListener("hashchange", navigate);
+  }, []);
   const queryClient = useQueryClient();
   const [category, setCategory] = useState<string | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -81,8 +106,6 @@ export function MenuApp() {
         .map((item) => [item.id, item]) ?? [],
     ).values(),
   ];
-  const categoryName =
-    categories.data?.find((value) => value.id === category)?.name ?? "Всё меню";
 
   useEffect(() => {
     try {
@@ -138,57 +161,47 @@ export function MenuApp() {
         Перейти к меню
       </a>
       <header className="app-header">
-        <a href="#" className="wordmark" aria-label="МАИ Еда — к началу">
-          <span className="brand-symbol">
-            <UtensilsCrossed size={21} aria-hidden="true" />
-          </span>
-          <span>
-            МАИ<span className="wordmark-light"> ЕДА</span>
-          </span>
+        <a href="#menu" className="wordmark" aria-label="МАИ Еда — к началу">
+          <Wing />
+          <span>МАИ еда</span>
         </a>
-        <nav aria-label="Основная навигация">
-          <a href="#menu">Меню</a>
-          <a href="#cart">
-            Корзина{" "}
-            <span className="nav-count">
-              {quantity > 99 ? "99+" : quantity}
-            </span>
-          </a>
-          <a href="#orders">Заказы</a>
-          <a href="#profile">Профиль</a>
-        </nav>
-        <span className="header-note">Хороший обед — по плану.</span>
+        <span className="header-edition">
+          {view === "menu"
+            ? "МЕНЮ"
+            : view === "profile"
+              ? "ПРОФИЛЬ"
+              : "ВАШ ЗАКАЗ"}{" "}
+          / МАИ
+        </span>
       </header>
       <main>
-        <section className="menu-intro" aria-labelledby="page-heading">
-          <div>
-            <p className="eyebrow">
-              <span className="small-rule" /> Столовая МАИ
-            </p>
-            <h1 id="page-heading">
-              Обед в МАИ<span className="heading-dot">.</span>
-            </h1>
-            <p className="intro-copy">
-              Любимые блюда.
-              <br className="mobile-break" /> Соберите свой обед.
-            </p>
-          </div>
-          <a className="intro-link" href="#menu">
-            <span>Что на обед?</span>
-            <ArrowDown size={20} aria-hidden="true" />
+        <section
+          hidden={view !== "venue"}
+          className="venue-screen"
+          aria-labelledby="venue-title"
+        >
+          <p className="eyebrow">СТОЛОВАЯ МАИ</p>
+          <h1 id="venue-title">Время на обед</h1>
+          <p>Выберите блюда заранее — заберите в удобное время.</p>
+          <a href="#menu" className="venue-card">
+            <MapPin size={24} />
+            <span>
+              <strong>Столовая МАИ</strong>
+              <small>Меню и доступное время выдачи</small>
+            </span>
+            <ArrowRight size={20} />
           </a>
         </section>
-
         <div className="menu-layout">
           <section
             id="menu"
             className="menu-section"
+            hidden={view !== "menu"}
             aria-labelledby="menu-heading"
           >
             <div className="section-heading">
               <div>
-                <p className="eyebrow">Выбирайте по вкусу</p>
-                <h2 id="menu-heading">{categoryName}</h2>
+                <h1 id="menu-heading">Меню на сегодня</h1>
               </div>
               <button
                 className="refresh-button"
@@ -206,12 +219,25 @@ export function MenuApp() {
                 />
               </button>
             </div>
+            <a href="#venue" className="venue-link">
+              <MapPin size={20} /> Столовая МАИ <ArrowDown size={14} />
+            </a>
+            <label className="menu-search">
+              <Search size={22} />
+              <input
+                type="search"
+                aria-label="Найти блюдо"
+                placeholder="Найти блюдо"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </label>
             <div className="category-list" aria-label="Категории блюд">
               <button
                 aria-pressed={category === null}
                 onClick={() => setCategory(null)}
               >
-                Всё меню
+                Все
               </button>
               {categories.data?.map((value) => (
                 <button
@@ -283,73 +309,72 @@ export function MenuApp() {
               </div>
             ) : (
               <div className="dish-grid">
-                {items.map((item, index) => (
-                  <article className="dish-card" key={item.id}>
-                    {imageUrl(item.image_url) && (
-                      <div className="dish-photo">
-                        <img
-                          src={imageUrl(item.image_url)}
-                          alt=""
-                          loading="lazy"
-                          referrerPolicy="no-referrer"
-                          onError={(event) => {
-                            event.currentTarget.style.display = "none";
-                          }}
-                        />
+                {items
+                  .filter((item) =>
+                    item.name
+                      .toLocaleLowerCase("ru")
+                      .includes(search.trim().toLocaleLowerCase("ru")),
+                  )
+                  .map((item) => (
+                    <article className="dish-card" key={item.id}>
+                      <button
+                        className="dish-open"
+                        aria-label={`Подробнее: ${item.name}`}
+                        onClick={() => setSelectedDish(item)}
+                      >
+                        <DishPhoto item={item} />
+                        <h3>{item.name}</h3>
+                      </button>
+                      <p className="dish-description">{money(item.price)}</p>
+                      <div className="dish-bottom">
+                        {cart.find((line) => line.id === item.id) ? (
+                          <QuantityControl
+                            name={item.name}
+                            value={
+                              cart.find((line) => line.id === item.id)!.quantity
+                            }
+                            onChange={(next) => change(item.id, next)}
+                            disabled={
+                              !item.is_available ||
+                              cartQueries[
+                                cart.findIndex((line) => line.id === item.id)
+                              ]?.isError
+                            }
+                          />
+                        ) : (
+                          <button
+                            className="add-button"
+                            aria-label={`Добавить ${item.name} в корзину`}
+                            onClick={() => add(item)}
+                            disabled={!hydrated || !item.is_available}
+                          >
+                            {item.is_available ? (
+                              <>
+                                <span>Добавить · {money(item.price)}</span>
+                              </>
+                            ) : (
+                              "Недоступно"
+                            )}
+                          </button>
+                        )}
                       </div>
-                    )}
-                    <div className="dish-meta">
-                      <span>
-                        {categories.data?.find(
-                          (value) => value.id === item.category_id,
-                        )?.name ?? "Блюдо"}
-                      </span>
-                      <span className="dish-number">
-                        {String(index + 1).padStart(2, "0")}
-                      </span>
-                    </div>
-                    <h3>{item.name}</h3>
-                    <p className="dish-description">
-                      {item.description || "Приготовлено в нашей столовой."}
-                    </p>
-                    <div className="dish-bottom">
-                      <span className="dish-price">{money(item.price)}</span>
-                      {cart.find((line) => line.id === item.id) ? (
-                        <QuantityControl
-                          name={item.name}
-                          value={
-                            cart.find((line) => line.id === item.id)!.quantity
-                          }
-                          onChange={(next) => change(item.id, next)}
-                          disabled={
-                            !item.is_available ||
-                            cartQueries[
-                              cart.findIndex((line) => line.id === item.id)
-                            ]?.isError
-                          }
-                        />
-                      ) : (
-                        <button
-                          className="add-button"
-                          aria-label={`Добавить ${item.name} в корзину`}
-                          onClick={() => add(item)}
-                          disabled={!hydrated || !item.is_available}
-                        >
-                          {item.is_available ? (
-                            <>
-                              <Plus size={18} aria-hidden="true" />
-                              <span>Добавить</span>
-                            </>
-                          ) : (
-                            "Недоступно"
-                          )}
-                        </button>
-                      )}
-                    </div>
-                  </article>
-                ))}
+                    </article>
+                  ))}
               </div>
             )}
+            {search &&
+              !items.some((item) =>
+                item.name
+                  .toLocaleLowerCase("ru")
+                  .includes(search.trim().toLocaleLowerCase("ru")),
+              ) && (
+                <p className="inline-note">
+                  Среди загруженных блюд совпадений нет.{" "}
+                  {menu.hasNextPage
+                    ? "Загрузите ещё блюда или измените запрос."
+                    : "Попробуйте другой запрос."}
+                </p>
+              )}
             {menu.isError && items.length > 0 && (
               <p className="inline-note" role="alert">
                 Не удалось обновить список.{" "}
@@ -376,18 +401,19 @@ export function MenuApp() {
           <aside
             id="cart"
             className="cart-panel"
+            hidden={view !== "cart"}
             aria-labelledby="cart-heading"
           >
-            <div className="cart-top">
-              <span className="cart-icon">
-                <ShoppingBag size={24} aria-hidden="true" />
-              </span>
-              <span className="cart-label">Собрано вами</span>
-            </div>
+            <a className="back-link" href="#menu">
+              ← Назад
+            </a>
             <div className="cart-title">
-              <h2 id="cart-heading">Ваш обед</h2>
-              <span>{String(cart.length).padStart(2, "0")}</span>
+              <h1 id="cart-heading">Ваш обед</h1>
             </div>
+            <p className="cart-venue">Столовая МАИ</p>
+            <a className="history-link" href="#orders">
+              Мои заказы <ArrowRight size={16} />
+            </a>
             {cart.length === 0 ? (
               <div className="cart-empty">
                 <p>Начните с любимого.</p>
@@ -414,6 +440,7 @@ export function MenuApp() {
                           unavailable ? "cart-line unavailable" : "cart-line"
                         }
                       >
+                        {item && <DishPhoto item={item} />}
                         <div className="cart-line-heading">
                           <h3>
                             {item?.name ??
@@ -465,7 +492,7 @@ export function MenuApp() {
                 </ul>
                 <div className="cart-summary">
                   <div>
-                    <span>Предварительно</span>
+                    <span>Итого</span>
                     <strong>{total === null ? "—" : money(total)}</strong>
                   </div>
                   <p>
@@ -513,8 +540,15 @@ export function MenuApp() {
             </div>
           </aside>
         </div>
-        <OrdersPanel />
-        <ProfilePanel />
+        <div hidden={view !== "orders"} className="orders-screen">
+          <a className="back-link" href="#cart">
+            ← К корзине
+          </a>
+          <OrdersPanel />
+        </div>
+        <div hidden={view !== "profile"}>
+          <ProfilePanel />
+        </div>
         <div className="sr-only" role="status" aria-live="polite">
           {notice}
         </div>
@@ -524,25 +558,41 @@ export function MenuApp() {
           </p>
         )}
       </main>
-      <footer className="app-footer">
-        <span>МАИ ЕДА</span>
-        <p>Выбирайте. Собирайте. Приятного аппетита.</p>
-        <a href="#page-heading">К началу ↑</a>
-      </footer>
-      {cart.length > 0 && (
-        <a className="mobile-cart-link" href="#cart">
-          <span>
-            <ShoppingBag size={18} aria-hidden="true" />
-            Корзина{" "}
-            <span className="mobile-cart-count">
-              {quantity > 99 ? "99+" : quantity}
+      <nav className="bottom-nav" aria-label="Основная навигация">
+        {(
+          [
+            { id: "venue", label: "Столовые", icon: MapPin },
+            { id: "menu", label: "Меню", icon: Utensils },
+            { id: "cart", label: "Заказ", icon: Ticket },
+            { id: "profile", label: "Профиль", icon: UserRound },
+          ] as const
+        ).map(({ id, label, icon: Icon }) => (
+          <a
+            key={id}
+            href={`#${id}`}
+            aria-current={
+              view === id || (id === "cart" && view === "orders")
+                ? "page"
+                : undefined
+            }
+          >
+            <Icon size={21} />
+            <span>
+              {label}
+              {id === "cart" && quantity > 0 ? ` · ${quantity}` : ""}
             </span>
-          </span>
-          <strong>
-            {total === null ? "Проверить" : `≈ ${money(total)}`}
-            <ArrowRight size={17} aria-hidden="true" />
-          </strong>
-        </a>
+          </a>
+        ))}
+      </nav>
+      {selectedDish && (
+        <DishDetails
+          item={selectedDish}
+          onClose={() => setSelectedDish(null)}
+          onAdd={() => {
+            add(selectedDish);
+            setSelectedDish(null);
+          }}
+        />
       )}
     </div>
   );
@@ -580,5 +630,81 @@ function QuantityControl({
         <Plus size={16} aria-hidden="true" />
       </button>
     </div>
+  );
+}
+
+function Wing() {
+  return (
+    <svg
+      className="wing-mark"
+      aria-hidden="true"
+      width="26"
+      height="26"
+      viewBox="0 0 26 26"
+    >
+      <path
+        fill="currentColor"
+        d="M3 6H22L17 10H1L3 6ZM5 12H17L12 16H3L5 12ZM7 18H12L8 21H5L7 18Z"
+      />
+    </svg>
+  );
+}
+
+function DishPhoto({ item }: { item: MenuItem }) {
+  const source = imageUrl(item.image_url);
+  return (
+    <span className="dish-photo">
+      {source ? (
+        <img
+          src={source}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={(event) => {
+            event.currentTarget.hidden = true;
+          }}
+        />
+      ) : (
+        <Utensils size={28} aria-hidden="true" />
+      )}
+    </span>
+  );
+}
+
+function DishDetails({
+  item,
+  onClose,
+  onAdd,
+}: {
+  item: MenuItem;
+  onClose: () => void;
+  onAdd: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    dialog.current?.showModal();
+  }, []);
+  return (
+    <dialog
+      ref={dialog}
+      className="dish-dialog"
+      onClose={onClose}
+      aria-labelledby="dish-detail-title"
+    >
+      <button
+        className="dialog-close"
+        aria-label="Закрыть блюдо"
+        onClick={onClose}
+      >
+        <X size={22} />
+      </button>
+      <DishPhoto item={item} />
+      <h2 id="dish-detail-title">{item.name}</h2>
+      <p className="dish-detail-price">{money(item.price)}</p>
+      {item.description && <p>{item.description}</p>}
+      <button className="primary-button" onClick={onAdd}>
+        Добавить в корзину · {money(item.price)}
+      </button>
+    </dialog>
   );
 }
