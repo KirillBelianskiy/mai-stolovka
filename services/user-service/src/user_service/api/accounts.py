@@ -1,11 +1,15 @@
+import hashlib
+import secrets
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from starlette.concurrency import run_in_threadpool
 
 from user_service.api.dependencies import Claims, LoginSession, Session
+from user_service.api.recipients import record_init_data_permission
 from user_service.api.schemas import (
     LoginResponse,
     ProfileUpdate,
@@ -16,9 +20,71 @@ from user_service.api.schemas import (
 from user_service.application.passwords import DUMMY_HASH, password_hash
 from user_service.application.telegram import InvalidInitData, validate_init_data
 from user_service.domain.users import Role
-from user_service.infrastructure.models import StaffCredential, User
+from user_service.infrastructure.models import StaffCredential, User, UserSession
 
 router = APIRouter(tags=["accounts"])
+SESSION_COOKIE = "mai_session"
+SESSION_COOKIE_PATH = "/api/v1/users/auth"
+SESSION_IDLE_DAYS = 30
+SESSION_ABSOLUTE_DAYS = 90
+
+
+def require_session_origin(
+    request: Request, origin: Annotated[str | None, Header()] = None
+) -> None:
+    if origin is None or origin not in request.app.state.settings.allowed_session_origins:
+        raise HTTPException(403, "Origin is not allowed")
+
+
+def session_token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def set_session_cookie(response: Response, token: str, absolute_expiry: datetime) -> None:
+    remaining = max(0, int((absolute_expiry - datetime.now(UTC)).total_seconds()))
+    response.set_cookie(
+        key=SESSION_COOKIE,
+        value=token,
+        max_age=remaining,
+        expires=absolute_expiry,
+        path=SESSION_COOKIE_PATH,
+        secure=True,
+        httponly=True,
+        samesite="strict",
+    )
+
+
+def clear_session_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=SESSION_COOKIE,
+        path=SESSION_COOKIE_PATH,
+        secure=True,
+        httponly=True,
+        samesite="strict",
+    )
+
+
+async def revoke_presented_session(db: LoginSession, token: str | None) -> None:
+    if db is None or not token:
+        return
+    row = await db.scalar(
+        select(UserSession)
+        .where(UserSession.token_hash == session_token_hash(token))
+        .with_for_update()
+    )
+    if row is not None and row.revoked_at is None:
+        row.revoked_at = datetime.now(UTC)
+
+
+def login_response(request: Request, user: User) -> LoginResponse:
+    return LoginResponse(
+        access_token=request.app.state.tokens.issue(user.id, user.role),
+        expires_in=request.app.state.settings.access_token_ttl_seconds,
+        user=UserProfile.model_validate(user),
+    )
+
+
+SessionOrigin = Annotated[None, Depends(require_session_origin)]
 
 
 def signing_ready(request: Request) -> None:
@@ -26,9 +92,20 @@ def signing_ready(request: Request) -> None:
         raise HTTPException(503, "Authentication is not configured")
 
 
-@router.post("/auth/telegram", response_model=LoginResponse)
+@router.post(
+    "/auth/telegram",
+    response_model=LoginResponse,
+    description=(
+        "Validates fresh Telegram initData, creates a revocable browser session, and sets the "
+        "Secure, HttpOnly mai_session cookie. Requires an allowlisted Origin."
+    ),
+)
 async def telegram_login(
-    body: TelegramLogin, request: Request, response: Response, db: LoginSession
+    body: TelegramLogin,
+    request: Request,
+    response: Response,
+    db: LoginSession,
+    _origin: SessionOrigin,
 ) -> LoginResponse:
     signing_ready(request)
     if db is None:
@@ -58,14 +135,98 @@ async def telegram_login(
     user = (await db.scalars(upsert)).one_or_none()
     if user is None:
         raise HTTPException(403, "Staff must use staff authentication")
-    result = LoginResponse(
-        access_token=request.app.state.tokens.issue(user.id, user.role),
-        expires_in=settings.access_token_ttl_seconds,
-        user=UserProfile.model_validate(user),
+    if identity.allows_write_to_pm is True:
+        await record_init_data_permission(db, user, identity.auth_date)
+    await revoke_presented_session(db, request.cookies.get(SESSION_COOKIE))
+    now = datetime.now(UTC)
+    absolute_expiry = now + timedelta(days=SESSION_ABSOLUTE_DAYS)
+    token = secrets.token_urlsafe(32)
+    db.add(
+        UserSession(
+            user_id=user.id,
+            token_hash=session_token_hash(token),
+            last_used_at=now,
+            idle_expires_at=now + timedelta(days=SESSION_IDLE_DAYS),
+            absolute_expires_at=absolute_expiry,
+        )
     )
+    result = login_response(request, user)
     await db.commit()
     response.headers["Cache-Control"] = "no-store"
+    set_session_cookie(response, token, absolute_expiry)
     return result
+
+
+@router.post(
+    "/auth/session",
+    response_model=LoginResponse,
+    description=(
+        "Restores the Mini App identity from the mai_session cookie and issues a fresh access "
+        "JWT. Requires an allowlisted Origin."
+    ),
+)
+async def restore_session(
+    request: Request,
+    response: Response,
+    db: LoginSession,
+    _origin: SessionOrigin,
+    token: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
+) -> LoginResponse:
+    signing_ready(request)
+    if db is None:
+        raise HTTPException(503, "Database is unavailable")
+    if not token:
+        raise HTTPException(401, "Session is not valid")
+    session = await db.scalar(
+        select(UserSession)
+        .where(UserSession.token_hash == session_token_hash(token))
+        .with_for_update()
+    )
+    now = datetime.now(UTC)
+    if (
+        session is None
+        or session.revoked_at is not None
+        or session.idle_expires_at <= now
+        or session.absolute_expires_at <= now
+    ):
+        raise HTTPException(401, "Session is not valid")
+    user = await db.get(User, session.user_id)
+    if user is None or user.role != Role.CLIENT:
+        raise HTTPException(401, "Session is not valid")
+    session.last_used_at = now
+    session.idle_expires_at = min(
+        now + timedelta(days=SESSION_IDLE_DAYS), session.absolute_expires_at
+    )
+    result = login_response(request, user)
+    await db.commit()
+    response.headers["Cache-Control"] = "no-store"
+    set_session_cookie(response, token, session.absolute_expires_at)
+    return result
+
+
+@router.post(
+    "/auth/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+    description=(
+        "Revokes the presented Mini App session when present and clears its cookie. Requires "
+        "an allowlisted Origin. Existing access JWTs remain valid until expiry."
+    ),
+)
+async def logout(
+    request: Request,
+    response: Response,
+    db: LoginSession,
+    _origin: SessionOrigin,
+    token: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
+) -> Response:
+    if db is None:
+        raise HTTPException(503, "Database is unavailable")
+    await revoke_presented_session(db, token)
+    await db.commit()
+    response.headers["Cache-Control"] = "no-store"
+    clear_session_cookie(response)
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
 
 
 @router.post("/auth/staff", response_model=LoginResponse)
@@ -91,11 +252,7 @@ async def staff_login(
     credential, user = row
     if updated:
         credential.password_hash = updated
-    result = LoginResponse(
-        access_token=request.app.state.tokens.issue(user.id, user.role),
-        expires_in=request.app.state.settings.access_token_ttl_seconds,
-        user=UserProfile.model_validate(user),
-    )
+    result = login_response(request, user)
     await db.commit()
     response.headers["Cache-Control"] = "no-store"
     return result
