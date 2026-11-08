@@ -43,7 +43,7 @@ class BlockObservation(BaseModel):
 
     expected_revision: int = Field(ge=0)
     telegram_user_id: int = Field(gt=0, le=2**63 - 1)
-    notification_id: UUID
+    notification_id: Annotated[UUID, Field(strict=False)]
     reason: Literal["bot_forbidden", "private_chat_blocked"]
 
 

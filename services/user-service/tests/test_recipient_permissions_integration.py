@@ -8,9 +8,12 @@ from urllib.parse import urlencode
 from uuid import uuid4
 
 import jwt
+import pytest
 from fastapi.testclient import TestClient
 
 from user_service.config import Settings
+
+pytestmark = pytest.mark.integration
 
 
 def notification_authorization(
