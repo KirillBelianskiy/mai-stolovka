@@ -1,0 +1,8 @@
+services:
+  user-service:
+    environment:
+      APP_SESSION_COOKIE_ALLOWED_ORIGINS: http://localhost:8180,http://localhost:8181
+  websocket-service:
+    environment:
+      APP_JWT_PUBLIC_KEY_BASE64: ${JWT_PUBLIC_KEY_BASE64}
+      APP_ALLOWED_ORIGINS: http://localhost:8181

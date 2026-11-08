@@ -743,3 +743,10 @@ textarea:focus-visible {
     max-width: none;
   }
 }
+
+.cancel-dialog { width: min(calc(100% - 32px), 480px); padding: 28px; border: 0; border-radius: 24px; color: #102a56; background: #fff; }
+.cancel-dialog::backdrop { background: #102a5670; }
+.cancel-dialog h2 { margin: 0 0 16px; font-size: 24px; font-weight: 800; }
+.cancel-dialog p { color: #526279; line-height: 1.6; }
+.cancel-dialog > div { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+.cancel-dialog button { flex: 1; }

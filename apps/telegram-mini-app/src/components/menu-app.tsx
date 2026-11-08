@@ -22,6 +22,7 @@ import {
   Utensils,
   X,
 } from "lucide-react";
+import { DishPhoto } from "@/components/dish-photo";
 import { CheckoutPanel, OrdersPanel } from "@/components/order-workspace";
 import { ProfilePanel } from "@/components/profile-panel";
 import { useEffect, useRef, useState } from "react";
@@ -31,7 +32,6 @@ import {
   addToCart,
   cartTotal,
   decodeCart,
-  imageUrl,
   loadCategories,
   loadItem,
   loadItems,
@@ -647,27 +647,6 @@ function Wing() {
         d="M3 6H22L17 10H1L3 6ZM5 12H17L12 16H3L5 12ZM7 18H12L8 21H5L7 18Z"
       />
     </svg>
-  );
-}
-
-function DishPhoto({ item }: { item: MenuItem }) {
-  const source = imageUrl(item.image_url);
-  return (
-    <span className="dish-photo">
-      {source ? (
-        <img
-          src={source}
-          alt=""
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          onError={(event) => {
-            event.currentTarget.hidden = true;
-          }}
-        />
-      ) : (
-        <Utensils size={28} aria-hidden="true" />
-      )}
-    </span>
   );
 }
 
