@@ -40,7 +40,7 @@ def integration_settings(auth_keys: tuple[bytes, bytes]) -> Settings:
     async def clear() -> None:
         connection = await asyncpg.connect(url.replace("postgresql+asyncpg://", "postgresql://"))
         try:
-            await connection.execute("TRUNCATE staff_credentials, users CASCADE")
+            await connection.execute("TRUNCATE user_sessions, staff_credentials, users CASCADE")
         finally:
             await connection.close()
 
@@ -51,10 +51,11 @@ def integration_settings(auth_keys: tuple[bytes, bytes]) -> Settings:
         jwt_public_key_base64=SecretStr(base64.b64encode(public).decode()),
         jwt_private_key_base64=SecretStr(base64.b64encode(private).decode()),
         telegram_bot_token=SecretStr("integration-test-only-bot"),
+        session_cookie_allowed_origins="https://testserver",
     )
 
 
 @pytest.fixture
 def integration_client(integration_settings: Settings) -> Iterator[TestClient]:
-    with TestClient(create_app(integration_settings)) as client:
+    with TestClient(create_app(integration_settings), base_url="https://testserver") as client:
         yield client

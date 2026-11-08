@@ -18,6 +18,11 @@ The environment lives in this service's `.venv`; it is not the root PyCharm envi
 Set environment variables explicitly; `.env.example` is documentation and is not loaded automatically.
 Choose another port when running several service processes on the host.
 
+Mini App auth uses `APP_SESSION_COOKIE_ALLOWED_ORIGINS` as a comma-separated exact-origin allowlist.
+Set the actual origin(s) used by the Mini App. The `mai_session` cookie is Secure, HttpOnly, host-only, SameSite=Strict,
+and scoped to `/api/v1/users/auth`. Use local HTTPS for browser engines that reject Secure cookies
+on HTTP localhost.
+
 - `GET /health/live`: process availability and service identity.
 - `GET /health/ready`: bounded PostgreSQL query; 503 when unconfigured or unavailable.
 
