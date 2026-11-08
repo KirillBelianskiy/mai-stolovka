@@ -6,6 +6,8 @@ COPY apps/telegram-mini-app/package.json ./apps/telegram-mini-app/package.json
 COPY apps/kitchen-app/package.json ./apps/kitchen-app/package.json
 RUN --mount=type=cache,target=/root/.npm npm ci --no-fund --fetch-retries=3
 COPY apps/telegram-mini-app ./apps/telegram-mini-app
+# The shared DOM regression suite also exercises the staff session boundary.
+COPY apps/kitchen-app/src ./apps/kitchen-app/src
 RUN npm run build --workspace @mai/telegram-mini-app
 
 FROM nginx:1.30.6-alpine

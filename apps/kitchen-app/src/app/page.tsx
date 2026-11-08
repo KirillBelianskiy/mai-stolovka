@@ -16,11 +16,13 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
 
-import { AdminPanel } from "@/components/admin-panel";
+import { CancelDialog } from "../components/cancel-dialog";
+import { AdminPanel } from "../components/admin-panel";
 import {
   apiRequest,
   ApiError,
@@ -35,7 +37,7 @@ import {
   type StaffRole,
   type StaffSession,
   type UserProfile,
-} from "@/lib/kitchen";
+} from "../lib/kitchen";
 
 const SESSION_KEY = "mai-food-kitchen-session";
 const STATUS_LABELS: Record<OrderStatus, string> = {
@@ -174,6 +176,10 @@ function LoginPanel({
 }
 
 export default function Home() {
+  const activeToken = useRef<string | null>(null);
+  const queueRequest = useRef(0);
+  const mutation = useRef<symbol | null>(null);
+  const [cancelCandidate, setCancelCandidate] = useState<Order | null>(null);
   const [session, setSession] = useState<StaffSession | null>(null);
   const [booting, setBooting] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -189,18 +195,33 @@ export default function Home() {
   >("queue");
 
   const signOut = useCallback((reason = "") => {
+    activeToken.current = null;
+    queueRequest.current += 1;
+    mutation.current = null;
     sessionStorage.removeItem(SESSION_KEY);
     setSession(null);
+    setCancelCandidate(null);
+    setBusyId(null);
+    setTotal(0);
+    setLastUpdated(null);
+    setNotice("");
     setOrders([]);
     setSelected(null);
     setError(reason);
   }, []);
   const handleAdminUnauthorized = useCallback(() => {
-    signOut("Срок входа истёк. Войдите снова, чтобы продолжить работу.");
-  }, [signOut]);
+    if (activeToken.current === session?.token) {
+      signOut("Срок входа истёк. Войдите снова, чтобы продолжить работу.");
+    }
+  }, [signOut, session?.token]);
 
   const loadQueue = useCallback(
     async (activeSession: StaffSession, quiet = false) => {
+      if (activeToken.current !== activeSession.token) return;
+      const requestId = ++queueRequest.current;
+      const isCurrent = () =>
+        activeToken.current === activeSession.token &&
+        queueRequest.current === requestId;
       if (!quiet) setLoading(true);
       setError("");
       try {
@@ -212,10 +233,12 @@ export default function Home() {
           `/orders/?${params.toString()}`,
           activeSession.token,
         );
+        if (!isCurrent()) return;
         setOrders(result.items);
         setTotal(result.total);
         setLastUpdated(new Date());
       } catch (caught) {
+        if (!isCurrent()) return;
         if (caught instanceof ApiError && caught.status === 401) {
           signOut("Срок входа истёк. Войдите снова, чтобы продолжить работу.");
         } else if (caught instanceof ApiError && caught.status === 403) {
@@ -226,7 +249,7 @@ export default function Home() {
           setError(messageFor(caught));
         }
       } finally {
-        if (!quiet) setLoading(false);
+        if (isCurrent()) setLoading(false);
       }
     },
     [signOut],
@@ -249,6 +272,7 @@ export default function Home() {
         }
         const user = await apiRequest<UserProfile>("/users/me", stored.token);
         if (active && isStaffRole(user.role)) {
+          activeToken.current = stored.token;
           setSession({ ...stored, user });
           restored = true;
           return;
@@ -307,7 +331,12 @@ export default function Home() {
   );
 
   async function updateStatus(order: Order, status: OrderStatus) {
-    if (!session || busyId) return;
+    if (!session || mutation.current) return;
+    const operation = Symbol("staff-order-action");
+    mutation.current = operation;
+    const token = session.token;
+    const isCurrent = () => activeToken.current === token;
+    setCancelCandidate(null);
     setBusyId(order.id);
     setNotice("");
     try {
@@ -315,15 +344,18 @@ export default function Home() {
         method: "PATCH",
         body: JSON.stringify({ status, expected_version: order.version }),
       });
+      if (!isCurrent()) return;
       setNotice(
         `${order.order_number}: ${STATUS_LABELS[status].toLowerCase()}.`,
       );
       await loadQueue(session, true);
     } catch (caught) {
+      if (!isCurrent()) return;
       if (caught instanceof ApiError && caught.status === 401) {
         signOut("Срок входа истёк. Войдите снова, чтобы продолжить работу.");
       } else if (caught instanceof ApiError && caught.status === 409) {
         await loadQueue(session, true);
+        if (!isCurrent()) return;
         setNotice(
           "Заказ уже изменился. Очередь обновлена — проверьте текущий статус и повторите действие.",
         );
@@ -331,13 +363,18 @@ export default function Home() {
         setError(messageFor(caught));
       }
     } finally {
-      setBusyId(null);
+      if (mutation.current === operation) mutation.current = null;
+      if (isCurrent()) setBusyId(null);
     }
   }
 
   async function cancelOrder(order: Order) {
-    if (!session || busyId) return;
-    if (!window.confirm(`Отменить ${order.order_number}?`)) return;
+    if (!session || mutation.current) return;
+    const operation = Symbol("staff-order-action");
+    mutation.current = operation;
+    const token = session.token;
+    const isCurrent = () => activeToken.current === token;
+    setCancelCandidate(null);
     setBusyId(order.id);
     setNotice("");
     try {
@@ -345,13 +382,16 @@ export default function Home() {
         method: "POST",
         body: JSON.stringify({ expected_version: order.version }),
       });
+      if (!isCurrent()) return;
       setNotice(`${order.order_number} отменён.`);
       await loadQueue(session, true);
     } catch (caught) {
+      if (!isCurrent()) return;
       if (caught instanceof ApiError && caught.status === 401) {
         signOut("Срок входа истёк. Войдите снова, чтобы продолжить работу.");
       } else if (caught instanceof ApiError && caught.status === 409) {
         await loadQueue(session, true);
+        if (!isCurrent()) return;
         setNotice(
           "Статус заказа изменился. Очередь обновлена — проверьте заказ перед повтором.",
         );
@@ -359,11 +399,14 @@ export default function Home() {
         setError(messageFor(caught));
       }
     } finally {
-      setBusyId(null);
+      if (mutation.current === operation) mutation.current = null;
+      if (isCurrent()) setBusyId(null);
     }
   }
 
   function login(newSession: StaffSession) {
+    activeToken.current = newSession.token;
+    queueRequest.current += 1;
     setActiveView("queue");
     setError("");
     setNotice("");
@@ -518,8 +561,8 @@ export default function Home() {
               </div>
             )}
             <section className="shift-summary" aria-label="Сводка смены">
-              <strong>{total} заказов в очереди</strong>
-              <span>{grouped.ready.length} готовы к выдаче</span>
+              <strong>Заказов в очереди: {total}</strong>
+              <span>Готовы к выдаче: {grouped.ready.length}</span>
               <small>Синхронизация каждые 15 сек.</small>
             </section>
             <div className="dispatch-layout">
@@ -640,7 +683,7 @@ export default function Home() {
                         <button
                           className="text-button danger-text"
                           disabled={busyId !== null}
-                          onClick={() => void cancelOrder(focused)}
+                          onClick={() => setCancelCandidate(focused)}
                         >
                           Отменить заказ
                         </button>
@@ -662,6 +705,14 @@ export default function Home() {
           </>
         )}
       </div>
+      {cancelCandidate && (
+        <CancelDialog
+          number={cancelCandidate.order_number}
+          busy={busyId !== null}
+          onDismiss={() => setCancelCandidate(null)}
+          onConfirm={() => void cancelOrder(cancelCandidate)}
+        />
+      )}
     </main>
   );
 }

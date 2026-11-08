@@ -7,7 +7,7 @@ import {
   apiRequest,
   ApiError,
   type StaffSession,
-} from "@/lib/kitchen";
+} from "../lib/kitchen";
 
 type Category = { id: string; name: string; sort_order: number };
 type MenuItem = {

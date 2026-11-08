@@ -42,6 +42,10 @@ The root npm workspace has one lockfile. Container image tags are explicit relea
 
 ## Run the local stack
 
+For a pre-populated, isolated demonstration with synthetic Telegram sign-in, six photographed
+dishes and staff accounts, follow the [UI demo launch guide](docs/stages/stage-5-ui-completeness.md#reproduce).
+It uses ports 8180/8181 and a dedicated Compose project. The lower-level setup below uses 8080/8081.
+
 From the repository root:
 
 ```sh
