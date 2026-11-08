@@ -5,12 +5,20 @@ import {
   ArrowRight,
   Check,
   ChefHat,
-  Clock3,
   LogOut,
   RefreshCw,
-  Utensils,
+  ClipboardList,
+  PackageCheck,
+  Settings,
+  Ticket,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react";
 
 import { AdminPanel } from "@/components/admin-panel";
 import {
@@ -84,10 +92,14 @@ function LoginPanel({
     setError("");
     setSubmitting(true);
     try {
-      const result = await apiRequest<LoginResponse>("/users/auth/staff", undefined, {
-        method: "POST",
-        body: JSON.stringify({ username, password }),
-      });
+      const result = await apiRequest<LoginResponse>(
+        "/users/auth/staff",
+        undefined,
+        {
+          method: "POST",
+          body: JSON.stringify({ username, password }),
+        },
+      );
       if (!isStaffRole(result.user.role)) {
         throw new Error("Вход в рабочее место доступен только сотрудникам.");
       }
@@ -108,13 +120,19 @@ function LoginPanel({
   return (
     <main className="login-shell">
       <section className="login-card" aria-labelledby="login-title">
-        <div className="brand-mark"><Utensils size={21} strokeWidth={2.2} /></div>
+        <div className="brand-mark">
+          <Wing />
+        </div>
         <p className="eyebrow">МАИ · СТОЛОВАЯ</p>
         <h1 id="login-title">Вход для сотрудников</h1>
         <p className="login-description">
           Войдите с учётной записью, выданной администратором.
         </p>
-        {message && <p className="session-message" role="status">{message}</p>}
+        {message && (
+          <p className="session-message" role="status">
+            {message}
+          </p>
+        )}
         <form className="login-form" onSubmit={submit}>
           <label htmlFor="username">Логин</label>
           <input
@@ -133,113 +151,25 @@ function LoginPanel({
             type="password"
             value={password}
           />
-          {error && <p className="form-error" role="alert">{error}</p>}
-          <button className="primary-button login-submit" disabled={submitting} type="submit">
+          {error && (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          )}
+          <button
+            className="primary-button login-submit"
+            disabled={submitting}
+            type="submit"
+          >
             {submitting ? "Проверяем…" : "Войти"}
             {!submitting && <ArrowRight size={17} />}
           </button>
         </form>
-        <p className="login-footnote">Сеанс действует ограниченное время и хранится только в этой вкладке.</p>
+        <p className="login-footnote">
+          Сеанс действует ограниченное время и хранится только в этой вкладке.
+        </p>
       </section>
     </main>
-  );
-}
-
-function OrderCard({
-  order,
-  role,
-  busy,
-  onAdvance,
-  onCancel,
-  onSelect,
-}: {
-  order: Order;
-  role: StaffRole;
-  busy: boolean;
-  onAdvance: (order: Order, target: OrderStatus) => void;
-  onCancel: (order: Order) => void;
-  onSelect: (order: Order) => void;
-}) {
-  const action = nextStatus(order, role);
-  return (
-    <article className="order-card">
-      <button className="order-card-main" onClick={() => onSelect(order)} type="button">
-        <div className="order-card-heading">
-          <span className="order-number">{order.order_number}</span>
-          <span className={`status-pill status-${order.status.toLowerCase()}`}>
-            {STATUS_LABELS[order.status]}
-          </span>
-        </div>
-        <div className="order-meta">
-          <span><Clock3 size={15} /> {formatTime(order.slot_start_time, true)}</span>
-          <span>№ версии {order.version}</span>
-        </div>
-        <p className="order-items-preview">
-          {order.items.map((item) => `${item.name_at_moment} × ${item.quantity}`).join(" · ")}
-        </p>
-      </button>
-      <div className="order-card-bottom">
-        <strong>{formatMoney(order.total_amount)}</strong>
-        <div className="order-actions">
-          {canCancel(order, role) && (
-            <button
-              className="text-button danger-text"
-              disabled={busy}
-              onClick={() => onCancel(order)}
-              type="button"
-            >
-              Отменить
-            </button>
-          )}
-          {action && (
-            <button
-              className="primary-button action-button"
-              disabled={busy}
-              onClick={() => onAdvance(order, action)}
-              type="button"
-            >
-              {busy ? "Сохраняем…" : STATUS_LABELS[action]}
-              {!busy && <ArrowRight size={15} />}
-            </button>
-          )}
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function OrderDetails({ order, onClose }: { order: Order; onClose: () => void }) {
-  return (
-    <div className="dialog-backdrop" onClick={onClose} role="presentation">
-      <section
-        aria-labelledby="detail-title"
-        aria-modal="true"
-        className="detail-dialog"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-      >
-        <div className="dialog-heading">
-          <div>
-            <p className="eyebrow">ЗАКАЗ · ВЕРСИЯ {order.version}</p>
-            <h2 id="detail-title">{order.order_number}</h2>
-          </div>
-          <button aria-label="Закрыть детали" className="icon-button" onClick={onClose} type="button">×</button>
-        </div>
-        <p className="detail-slot">
-          Выдача {formatTime(order.slot_start_time, true)}–{formatTime(order.slot_end_time)} МСК
-        </p>
-        <ul className="detail-items">
-          {order.items.map((item) => (
-            <li key={item.id}>
-              <span>{item.name_at_moment}<small> × {item.quantity}</small></span>
-              <strong>{formatMoney(item.price_at_moment * item.quantity)}</strong>
-            </li>
-          ))}
-        </ul>
-        <div className="detail-total"><span>Итого</span><strong>{formatMoney(order.total_amount)}</strong></div>
-        <p className="detail-status">Статус: {STATUS_LABELS[order.status]}</p>
-      </section>
-    </div>
   );
 }
 
@@ -254,7 +184,9 @@ export default function Home() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [activeView, setActiveView] = useState<"queue" | "admin">("queue");
+  const [activeView, setActiveView] = useState<
+    "queue" | "kitchen" | "pickup" | "admin"
+  >("queue");
 
   const signOut = useCallback((reason = "") => {
     sessionStorage.removeItem(SESSION_KEY);
@@ -267,29 +199,38 @@ export default function Home() {
     signOut("Срок входа истёк. Войдите снова, чтобы продолжить работу.");
   }, [signOut]);
 
-  const loadQueue = useCallback(async (activeSession: StaffSession, quiet = false) => {
-    if (!quiet) setLoading(true);
-    setError("");
-    try {
-      const params = new URLSearchParams();
-      for (const status of queueStatuses(activeSession.user.role)) params.append("status", status);
-      params.set("limit", "100");
-      const result = await apiRequest<OrderPage>(`/orders/?${params.toString()}`, activeSession.token);
-      setOrders(result.items);
-      setTotal(result.total);
-      setLastUpdated(new Date());
-    } catch (caught) {
-      if (caught instanceof ApiError && caught.status === 401) {
-        signOut("Срок входа истёк. Войдите снова, чтобы продолжить работу.");
-      } else if (caught instanceof ApiError && caught.status === 403) {
-        signOut("Эта учётная запись больше не имеет доступа к рабочему месту.");
-      } else {
-        setError(messageFor(caught));
+  const loadQueue = useCallback(
+    async (activeSession: StaffSession, quiet = false) => {
+      if (!quiet) setLoading(true);
+      setError("");
+      try {
+        const params = new URLSearchParams();
+        for (const status of queueStatuses(activeSession.user.role))
+          params.append("status", status);
+        params.set("limit", "100");
+        const result = await apiRequest<OrderPage>(
+          `/orders/?${params.toString()}`,
+          activeSession.token,
+        );
+        setOrders(result.items);
+        setTotal(result.total);
+        setLastUpdated(new Date());
+      } catch (caught) {
+        if (caught instanceof ApiError && caught.status === 401) {
+          signOut("Срок входа истёк. Войдите снова, чтобы продолжить работу.");
+        } else if (caught instanceof ApiError && caught.status === 403) {
+          signOut(
+            "Эта учётная запись больше не имеет доступа к рабочему месту.",
+          );
+        } else {
+          setError(messageFor(caught));
+        }
+      } finally {
+        if (!quiet) setLoading(false);
       }
-    } finally {
-      if (!quiet) setLoading(false);
-    }
-  }, [signOut]);
+    },
+    [signOut],
+  );
 
   useEffect(() => {
     let active = true;
@@ -298,7 +239,10 @@ export default function Home() {
       try {
         const raw = sessionStorage.getItem(SESSION_KEY);
         if (!raw) return;
-        const stored = JSON.parse(raw) as Pick<StaffSession, "token" | "expiresAt">;
+        const stored = JSON.parse(raw) as Pick<
+          StaffSession,
+          "token" | "expiresAt"
+        >;
         if (!stored.token || stored.expiresAt <= Date.now()) {
           sessionStorage.removeItem(SESSION_KEY);
           return;
@@ -319,7 +263,9 @@ export default function Home() {
       }
     }
     void restore();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -330,7 +276,8 @@ export default function Home() {
       return;
     }
     const timer = window.setTimeout(
-      () => signOut("Срок входа истёк. Войдите снова, чтобы продолжить работу."),
+      () =>
+        signOut("Срок входа истёк. Войдите снова, чтобы продолжить работу."),
       remaining,
     );
     return () => window.clearTimeout(timer);
@@ -339,7 +286,10 @@ export default function Home() {
   useEffect(() => {
     if (!session) return;
     void loadQueue(session);
-    const timer = window.setInterval(() => void loadQueue(session, true), 15_000);
+    const timer = window.setInterval(
+      () => void loadQueue(session, true),
+      15_000,
+    );
     const onFocus = () => void loadQueue(session, true);
     window.addEventListener("focus", onFocus);
     return () => {
@@ -348,10 +298,13 @@ export default function Home() {
     };
   }, [session, loadQueue]);
 
-  const grouped = useMemo(() => ({
-    active: orders.filter((order) => order.status !== "READY"),
-    ready: orders.filter((order) => order.status === "READY"),
-  }), [orders]);
+  const grouped = useMemo(
+    () => ({
+      active: orders.filter((order) => order.status !== "READY"),
+      ready: orders.filter((order) => order.status === "READY"),
+    }),
+    [orders],
+  );
 
   async function updateStatus(order: Order, status: OrderStatus) {
     if (!session || busyId) return;
@@ -362,14 +315,18 @@ export default function Home() {
         method: "PATCH",
         body: JSON.stringify({ status, expected_version: order.version }),
       });
-      setNotice(`${order.order_number}: ${STATUS_LABELS[status].toLowerCase()}.`);
+      setNotice(
+        `${order.order_number}: ${STATUS_LABELS[status].toLowerCase()}.`,
+      );
       await loadQueue(session, true);
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 401) {
         signOut("Срок входа истёк. Войдите снова, чтобы продолжить работу.");
       } else if (caught instanceof ApiError && caught.status === 409) {
         await loadQueue(session, true);
-        setNotice("Заказ уже изменился. Очередь обновлена — проверьте текущий статус и повторите действие.");
+        setNotice(
+          "Заказ уже изменился. Очередь обновлена — проверьте текущий статус и повторите действие.",
+        );
       } else {
         setError(messageFor(caught));
       }
@@ -395,7 +352,9 @@ export default function Home() {
         signOut("Срок входа истёк. Войдите снова, чтобы продолжить работу.");
       } else if (caught instanceof ApiError && caught.status === 409) {
         await loadQueue(session, true);
-        setNotice("Статус заказа изменился. Очередь обновлена — проверьте заказ перед повтором.");
+        setNotice(
+          "Статус заказа изменился. Очередь обновлена — проверьте заказ перед повтором.",
+        );
       } else {
         setError(messageFor(caught));
       }
@@ -405,134 +364,321 @@ export default function Home() {
   }
 
   function login(newSession: StaffSession) {
+    setActiveView("queue");
     setError("");
     setNotice("");
     setSession(newSession);
   }
 
   if (booting) {
-    return <main className="loading-screen" aria-live="polite">Проверяем сессию…</main>;
+    return (
+      <main className="loading-screen" aria-live="polite">
+        Проверяем сессию…
+      </main>
+    );
   }
   if (!session) return <LoginPanel message={error} onLogin={login} />;
 
   const isCook = session.user.role === "COOK";
+  const isCashier = session.user.role === "CASHIER";
   const isAdmin = session.user.role === "ADMIN";
-  const sections = isCook
-    ? [{ title: "В работе", items: grouped.active }]
-    : session.user.role === "CASHIER"
-      ? [{ title: "К выдаче", items: grouped.ready }]
-      : [
-          { title: "Приготовление", items: grouped.active },
-          { title: "К выдаче", items: grouped.ready },
-        ];
+  const shown =
+    activeView === "pickup" || isCashier
+      ? grouped.ready
+      : activeView === "kitchen" || isCook
+        ? grouped.active
+        : orders;
+  const focused = shown.find((order) => order.id === selected?.id) ?? shown[0];
+  const action = focused ? nextStatus(focused, session.user.role) : null;
+  const heading =
+    activeView === "admin"
+      ? "Меню и расписание"
+      : activeView === "pickup" || isCashier
+        ? "Проверка и выдача"
+        : activeView === "kitchen" || isCook
+          ? "Приготовление заказа"
+          : "Заказы на сегодня";
 
   return (
     <main className="kitchen-shell">
-      <header className="topbar">
-        <div className="brand-lockup">
-          <div className="brand-mark"><Utensils size={19} strokeWidth={2.2} /></div>
-          <div><p className="eyebrow">МАИ · СТОЛОВАЯ</p><strong>Рабочее место кухни</strong></div>
+      <aside className="staff-sidebar">
+        <div className="staff-brand">
+          <Wing />
+          <strong>МАИ еда</strong>
+          <span>
+            СТОЛОВАЯ МАИ
+            <br />
+            РАБОЧЕЕ МЕСТО
+          </span>
         </div>
-        <div className="account-area">
-          <div className="account-copy">
-            <strong>{session.user.full_name}</strong>
-            <span>{ROLE_LABELS[session.user.role]}</span>
-          </div>
-          <button className="icon-button logout-button" onClick={() => signOut()} title="Выйти" type="button">
-            <LogOut size={17} /><span>Выйти</span>
-          </button>
-        </div>
-      </header>
-
-      {isAdmin && (
-        <nav aria-label="Разделы рабочего места" className="view-tabs">
-          <button aria-current={activeView === "queue" ? "page" : undefined} className={activeView === "queue" ? "view-tab active" : "view-tab"} onClick={() => setActiveView("queue")} type="button">Заказы</button>
-          <button aria-current={activeView === "admin" ? "page" : undefined} className={activeView === "admin" ? "view-tab active" : "view-tab"} onClick={() => setActiveView("admin")} type="button">Меню и слоты</button>
+        <nav aria-label="Разделы рабочего места">
+          {isAdmin && (
+            <button
+              aria-current={activeView === "queue" ? "page" : undefined}
+              onClick={() => setActiveView("queue")}
+            >
+              <Ticket size={21} />
+              Заказы
+            </button>
+          )}
+          {!isCashier && (
+            <button
+              aria-current={
+                activeView === "kitchen" || isCook ? "page" : undefined
+              }
+              onClick={() => setActiveView("kitchen")}
+            >
+              <ChefHat size={21} />
+              Кухня
+            </button>
+          )}
+          {!isCook && (
+            <button
+              aria-current={
+                activeView === "pickup" || isCashier ? "page" : undefined
+              }
+              onClick={() => setActiveView("pickup")}
+            >
+              <PackageCheck size={21} />
+              Выдача
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              aria-current={activeView === "admin" ? "page" : undefined}
+              onClick={() => setActiveView("admin")}
+            >
+              <Settings size={21} />
+              Меню и слоты
+            </button>
+          )}
         </nav>
-      )}
-
-      {isAdmin && activeView === "admin" ? <AdminPanel onUnauthorized={handleAdminUnauthorized} session={session} /> : <>
-      <section className="queue-header">
-        <div>
-          <p className="eyebrow">ОЧЕРЕДЬ ЗАКАЗОВ</p>
-          <h1>{isCook ? "Приготовление" : session.user.role === "CASHIER" ? "Выдача заказов" : "Смена кухни"}</h1>
-          <p className="queue-subtitle">
-            {session.user.role === "CASHIER"
-              ? "Подтвердите выдачу после передачи заказа гостю."
-              : "Обновления приходят автоматически. Перед действием сверяйте версию заказа."}
-          </p>
-        </div>
-        <div className="queue-tools">
-          <div className="connection-state"><span className="live-dot" /> Синхронизация каждые 15 сек.</div>
-          <button className="secondary-button" disabled={loading} onClick={() => void loadQueue(session)} type="button">
-            <RefreshCw className={loading ? "spin" : ""} size={16} /> Обновить
+        <svg
+          className="sidebar-aircraft"
+          viewBox="0 0 140 120"
+          fill="none"
+          aria-hidden="true"
+        >
+          <path
+            d="M8 84L130 20L96 92L40 114L8 84ZM40 114L48 62"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          />
+        </svg>
+        <div className="staff-account">
+          <strong>{session.user.full_name}</strong>
+          <span>{ROLE_LABELS[session.user.role]}</span>
+          <button onClick={() => signOut()}>
+            <LogOut size={16} />
+            Выйти
           </button>
         </div>
-      </section>
-
-      {error && (
-        <div className="alert alert-error" role="alert">
-          <AlertCircle size={18} />
-          <span>{error}</span>
-          <button className="text-button" onClick={() => void loadQueue(session)} type="button">Повторить</button>
-        </div>
-      )}
-      {notice && <div className="alert alert-success" role="status"><Check size={18} /><span>{notice}</span></div>}
-
-      <div className="queue-summary">
-        <div><span>Активных заказов</span><strong>{total}</strong></div>
-        <div><span>Обновлено</span><strong>{lastUpdated ? formatTime(lastUpdated.toISOString()) : "—"}</strong></div>
-      </div>
-
-      {loading && orders.length === 0 ? (
-        <div className="queue-state"><span className="spinner" /><strong>Загружаем очередь…</strong></div>
-      ) : error && orders.length === 0 ? (
-        <div className="queue-state" role="status">
-          <div className="empty-icon"><AlertCircle size={23} /></div>
-          <strong>Не удалось загрузить очередь</strong>
-          <span>Проверьте подключение и попробуйте ещё раз.</span>
-          <button className="secondary-button" onClick={() => void loadQueue(session)} type="button">
-            <RefreshCw size={15} /> Повторить
-          </button>
-        </div>
-      ) : !error && orders.length === 0 ? (
-        <div className="queue-state empty-state">
-          <div className="empty-icon"><ChefHat size={25} /></div>
-          <strong>Очередь пока пуста</strong>
-          <span>Новые заказы появятся здесь автоматически.</span>
-        </div>
-      ) : (
-        <div className="queue-sections">
-          {sections.map((section) => (
-            <section className="queue-section" key={section.title}>
-              <div className="section-heading">
-                <h2>{section.title}</h2><span>{section.items.length}</span>
+      </aside>
+      <div className="staff-content">
+        <header className="workspace-heading">
+          <div>
+            <h1>{heading}</h1>
+            <p>Столовая МАИ · {ROLE_LABELS[session.user.role]}</p>
+          </div>
+          <div className="workspace-clock">
+            {lastUpdated ? formatTime(lastUpdated.toISOString()) : "—"} / МСК
+            <button
+              className="text-button"
+              disabled={loading}
+              onClick={() => void loadQueue(session)}
+              aria-label="Обновить очередь"
+            >
+              <RefreshCw size={16} className={loading ? "spin" : ""} />
+            </button>
+          </div>
+        </header>
+        {isAdmin && activeView === "admin" ? (
+          <AdminPanel
+            onUnauthorized={handleAdminUnauthorized}
+            session={session}
+          />
+        ) : (
+          <>
+            {error && (
+              <div className="alert alert-error" role="alert">
+                <AlertCircle size={18} />
+                <span>{error}</span>
+                <button
+                  className="text-button"
+                  onClick={() => void loadQueue(session)}
+                >
+                  Повторить
+                </button>
               </div>
-              {section.items.length === 0 ? (
-                <div className="section-empty">Нет заказов в этом разделе.</div>
-              ) : (
-                <div className="order-grid">
-                  {section.items.map((order) => (
-                    <OrderCard
-                      busy={busyId === order.id}
-                      key={order.id}
-                      onAdvance={updateStatus}
-                      onCancel={cancelOrder}
-                      onSelect={setSelected}
-                      order={order}
-                      role={session.user.role}
-                    />
-                  ))}
-                </div>
-              )}
+            )}
+            {notice && (
+              <div className="alert alert-success" role="status">
+                <Check size={18} />
+                <span>{notice}</span>
+              </div>
+            )}
+            <section className="shift-summary" aria-label="Сводка смены">
+              <strong>{total} заказов в очереди</strong>
+              <span>{grouped.ready.length} готовы к выдаче</span>
+              <small>Синхронизация каждые 15 сек.</small>
             </section>
-          ))}
-        </div>
-      )}
-
-      {selected && <OrderDetails onClose={() => setSelected(null)} order={selected} />}
-      </>}
-      <footer className="kitchen-footer"><span>Рабочее место кухни · МСК</span><span>Для помощи обратитесь к администратору</span></footer>
+            <div className="dispatch-layout">
+              <section className="dispatch-list" aria-label="Очередь заказов">
+                <h2>Ближайшие заказы</h2>
+                <p className="dispatch-list-caption">ЗАКАЗ / ВРЕМЯ / СТАТУС</p>
+                {loading && orders.length === 0 && (
+                  <p role="status">Загружаем очередь…</p>
+                )}
+                {!loading && shown.length === 0 && (
+                  <p className="section-empty">
+                    {error
+                      ? "Очередь недоступна"
+                      : "Нет заказов в этом разделе."}
+                  </p>
+                )}
+                {shown.map((order) => (
+                  <button
+                    key={order.id}
+                    className="dispatch-row"
+                    aria-pressed={focused?.id === order.id}
+                    onClick={() => setSelected(order)}
+                  >
+                    <strong>{order.order_number}</strong>
+                    <span>
+                      {formatTime(order.slot_start_time, true)}–
+                      {formatTime(order.slot_end_time)}
+                    </span>
+                    <small
+                      className={`dispatch-status status-${order.status.toLowerCase()}`}
+                    >
+                      {STATUS_LABELS[order.status]}
+                    </small>
+                  </button>
+                ))}
+                {total > orders.length && (
+                  <p className="queue-limit">
+                    Показано {orders.length} из {total} заказов.
+                  </p>
+                )}
+              </section>
+              <section className="working-ticket" aria-label="Рабочая карточка">
+                {focused ? (
+                  <>
+                    <h2>{focused.order_number}</h2>
+                    <span
+                      className={`status-pill status-${focused.status.toLowerCase()}`}
+                    >
+                      {STATUS_LABELS[focused.status]}
+                    </span>
+                    <h3>
+                      Получение {formatTime(focused.slot_start_time)}–
+                      {formatTime(focused.slot_end_time)}
+                    </h3>
+                    <p className="working-ticket-date">
+                      {formatTime(focused.slot_start_time, true)} МСК · версия{" "}
+                      {focused.version}
+                    </p>
+                    <ul className="working-ticket-items">
+                      {focused.items.map((item) => (
+                        <li key={item.id}>
+                          <span>
+                            {item.name_at_moment} × {item.quantity}
+                          </span>
+                          <strong>
+                            {formatMoney(item.price_at_moment * item.quantity)}
+                          </strong>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="working-ticket-total">
+                      Итого {formatMoney(focused.total_amount)}
+                    </p>
+                    <p className="staff-payment">
+                      {focused.payment_status === "DEMO_PAID"
+                        ? "Оплачено с демонстрационного баланса"
+                        : focused.payment_status === "DEMO_REFUNDED"
+                          ? "Демонстрационные средства возвращены"
+                          : focused.payment_status === "NOT_REQUIRED"
+                            ? "Оплата не требуется"
+                            : "Данные об оплате не получены"}
+                    </p>
+                    <div className="working-guidance">
+                      <ClipboardList size={22} />
+                      <div>
+                        <strong>
+                          {focused.status === "READY"
+                            ? "Проверьте заказ перед выдачей"
+                            : "Следующее действие"}
+                        </strong>
+                        <p>
+                          {focused.status === "READY"
+                            ? "Сверьте номер заказа и состав с гостем."
+                            : focused.status === "PREPARING"
+                              ? "Отметьте готовность после приготовления всех блюд."
+                              : "Начните приготовление выбранного заказа."}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="working-actions">
+                      {action && (
+                        <button
+                          className="primary-button"
+                          disabled={busyId !== null}
+                          onClick={() => void updateStatus(focused, action)}
+                        >
+                          {busyId === focused.id
+                            ? "Сохраняем…"
+                            : action === "PREPARING"
+                              ? "Начать приготовление"
+                              : action === "READY"
+                                ? "Готов к выдаче"
+                                : "Подтвердить выдачу"}
+                          <ArrowRight size={18} />
+                        </button>
+                      )}
+                      {canCancel(focused, session.user.role) && (
+                        <button
+                          className="text-button danger-text"
+                          disabled={busyId !== null}
+                          onClick={() => void cancelOrder(focused)}
+                        >
+                          Отменить заказ
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="working-empty">
+                    <ChefHat size={40} />
+                    <h2>Всё по плану</h2>
+                    <p>
+                      Выберите заказ из очереди. Здесь появятся состав и
+                      следующее действие.
+                    </p>
+                  </div>
+                )}
+              </section>
+            </div>
+          </>
+        )}
+      </div>
     </main>
+  );
+}
+
+function Wing() {
+  return (
+    <svg
+      className="wing-mark"
+      aria-hidden="true"
+      width="26"
+      height="26"
+      viewBox="0 0 26 26"
+    >
+      <path
+        fill="currentColor"
+        d="M3 6H22L17 10H1L3 6ZM5 12H17L12 16H3L5 12ZM7 18H12L8 21H5L7 18Z"
+      />
+    </svg>
   );
 }

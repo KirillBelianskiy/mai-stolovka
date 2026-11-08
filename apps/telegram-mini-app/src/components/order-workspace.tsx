@@ -115,7 +115,8 @@ function CheckoutSession({
   }, []);
   const wallet = useQuery({
     queryKey: ["own-orders", accountId, "wallet"],
-    queryFn: ({ signal }) => auth.withAccount(accountId, (t) => loadWallet(accountId, t, signal)),
+    queryFn: ({ signal }) =>
+      auth.withAccount(accountId, (t) => loadWallet(accountId, t, signal)),
     retry: false,
     staleTime: 0,
     refetchOnWindowFocus: true,
@@ -221,7 +222,9 @@ function CheckoutSession({
       lock.current = false;
       if (mounted.current) {
         setBusy(false);
-        void client.invalidateQueries({ queryKey: ["own-orders", accountId, "wallet"] });
+        void client.invalidateQueries({
+          queryKey: ["own-orders", accountId, "wallet"],
+        });
       }
     }
   }
@@ -263,20 +266,43 @@ function CheckoutSession({
       <section className="demo-wallet" aria-label="Демонстрационный баланс">
         <div className="wallet-heading">
           <strong>Демобаланс</strong>
-          <button className="text-button" disabled={wallet.isFetching || busy || auth.busy}
-            onClick={() => void wallet.refetch()}>Обновить демобаланс</button>
+          <button
+            className="text-button"
+            disabled={wallet.isFetching || busy || auth.busy}
+            onClick={() => void wallet.refetch()}
+          >
+            Обновить демобаланс
+          </button>
         </div>
         {wallet.isPending ? <p role="status">Проверяем демобаланс…</p> : null}
-        {wallet.isError ? <p role="alert">Не удалось обновить демобаланс. Данные могут быть устаревшими. Обновите баланс перед новым заказом.</p> : null}
-        {wallet.data && <>
-          <p className="wallet-amount">{money(wallet.data.balance)}</p>
-          <p>{wallet.data.checkout_payment_enabled
-            ? "При оформлении сервер спишет демосредства. Итог и доступный баланс проверяются заново."
-            : "Демооплата выключена. Для нового заказа оплата не требуется."}</p>
-          {wallet.data.checkout_payment_enabled && total !== null && wallet.data.balance < (priceApplicable ? price.total : total) &&
-            <p className="wallet-shortfall">По последним данным средств недостаточно. После пополнения обновите баланс.</p>}
-        </>}
-        <p className="order-smallprint">Это учебные средства, не реальные деньги. Пополнение выполняет администратор через API/Swagger. Баланс — по последнему обновлению.</p>
+        {wallet.isError ? (
+          <p role="alert">
+            Не удалось обновить демобаланс. Данные могут быть устаревшими.
+            Обновите баланс перед новым заказом.
+          </p>
+        ) : null}
+        {wallet.data && (
+          <>
+            <p className="wallet-amount">{money(wallet.data.balance)}</p>
+            <p>
+              {wallet.data.checkout_payment_enabled
+                ? "При оформлении сервер спишет демосредства. Итог и доступный баланс проверяются заново."
+                : "Демооплата выключена. Для нового заказа оплата не требуется."}
+            </p>
+            {wallet.data.checkout_payment_enabled &&
+              total !== null &&
+              wallet.data.balance < (priceApplicable ? price.total : total) && (
+                <p className="wallet-shortfall">
+                  По последним данным средств недостаточно. После пополнения
+                  обновите баланс.
+                </p>
+              )}
+          </>
+        )}
+        <p className="order-smallprint">
+          Это учебные средства, не реальные деньги. Пополнение выполняет
+          администратор через API/Swagger. Баланс — по последнему обновлению.
+        </p>
       </section>
       {!ready ? (
         <p role="status">Проверяем незавершённые запросы…</p>
@@ -530,7 +556,12 @@ function OrderHistory({ accountId }: { accountId: string }) {
   });
   return (
     <>
-      <div className="orders-toolbar">
+      {selected && (
+        <button className="back-link" onClick={() => setSelected(null)}>
+          ← К истории
+        </button>
+      )}
+      <div className="orders-toolbar" hidden={!!selected}>
         <p>
           По последнему обновлению. При возвращении в приложение сверяем статус.
         </p>
@@ -554,12 +585,15 @@ function OrderHistory({ accountId }: { accountId: string }) {
           Здесь появятся ваши заказы и талоны на выдачу.
         </p>
       )}
-      <div className="order-list">
+      <div className="order-list" hidden={!!selected}>
         {history.data?.items.map((order) => (
           <button
             className={`order-row ${selected === order.id ? "selected" : ""}`}
             key={order.id}
-            onClick={() => setSelected(order.id)}
+            onClick={() => {
+              setSelected(order.id);
+              window.scrollTo(0, 0);
+            }}
           >
             <span>
               <strong>{order.order_number}</strong>
@@ -574,12 +608,14 @@ function OrderHistory({ accountId }: { accountId: string }) {
                 {STATUS_LABELS[order.status]}
               </span>
               <strong>{money(order.total_amount)}</strong>
-              <span className="payment-evidence">{paymentLabel(order.payment_status)}</span>
+              <span className="payment-evidence">
+                {paymentLabel(order.payment_status)}
+              </span>
             </span>
           </button>
         ))}
       </div>
-      {history.data && (
+      {history.data && !selected && (
         <div className="order-pagination">
           <button
             className="text-button"
@@ -603,7 +639,7 @@ function OrderHistory({ accountId }: { accountId: string }) {
           </button>
         </div>
       )}
-      <p className="order-smallprint">
+      <p className="order-smallprint" hidden={!!selected}>
         История может меняться между страницами. Время — московское, МСК.
       </p>
       {selected && (
@@ -662,6 +698,19 @@ function OrderTicket({ accountId, id }: { accountId: string; id: string }) {
   const order = detail.data;
   return (
     <article className="order-ticket" aria-label="Талон заказа">
+      {order && (
+        <h2 className="ticket-screen-title">
+          {order.status === "READY"
+            ? "Можно забирать"
+            : order.status === "COMPLETED"
+              ? "Заказ выдан"
+              : order.status === "CANCELLED"
+                ? "Заказ отменён"
+                : order.status === "PENDING"
+                  ? "Заказ принят"
+                  : "Готовим ваш обед"}
+        </h2>
+      )}
       <div className="ticket-heading">
         <p className="eyebrow">Талон на выдачу</p>
         <button
@@ -680,29 +729,76 @@ function OrderTicket({ accountId, id }: { accountId: string; id: string }) {
       ) : null}
       {order && (
         <>
-          <h3>{order.order_number}</h3>
-          <p className={`order-status status-${order.status.toLowerCase()}`}>
-            {STATUS_LABELS[order.status]}
-          </p>
-          <p className="ticket-time">
-            {formatSlot(order.slot_start_time, order.slot_end_time)}
-          </p>
-          <ul>
-            {order.items.map((item) => (
-              <li key={item.id}>
-                <span>
-                  {item.name_at_moment} × {item.quantity}
-                </span>
-                <strong>{money(item.price_at_moment * item.quantity)}</strong>
-              </li>
-            ))}
-          </ul>
-          <div className="ticket-total">
-            <span>Сумма заказа</span>
-            <strong>{money(order.total_amount)}</strong>
+          <div className="boarding-pass">
+            <p className="boarding-caption">МАИ ЕДА / К ПОЛУЧЕНИЮ</p>
+            <h3>{order.order_number}</h3>
+            <p className={`order-status status-${order.status.toLowerCase()}`}>
+              {STATUS_LABELS[order.status]}
+            </p>
+            <p className="ticket-time">
+              <span>ВРЕМЯ ПОЛУЧЕНИЯ</span>
+              <strong>
+                {new Intl.DateTimeFormat("ru-RU", {
+                  timeZone: "Europe/Moscow",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }).format(new Date(order.slot_start_time))}
+                –
+                {new Intl.DateTimeFormat("ru-RU", {
+                  timeZone: "Europe/Moscow",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }).format(new Date(order.slot_end_time))}
+              </strong>
+              <small>
+                {formatSlot(order.slot_start_time, order.slot_end_time)}
+              </small>
+            </p>
+
+            <div className="ticket-total">
+              <span>Сумма заказа</span>
+              <strong>{money(order.total_amount)}</strong>
+            </div>
+            <p className="payment-evidence" role="status">
+              {paymentLabel(order.payment_status)}
+            </p>
           </div>
-          <p className="payment-evidence" role="status">{paymentLabel(order.payment_status)}</p>
-          {order.payment_status === "DEMO_REFUNDED" && <p className="order-smallprint">Возврат подтверждён сервером. Повторная проверка не создаёт новый возврат.</p>}
+          {order.status !== "CANCELLED" && (
+            <ol className="order-progress" aria-label="Этапы заказа">
+              {["Принят", "Готовим", "Готов"].map((label, index) => (
+                <li
+                  key={label}
+                  data-complete={
+                    index <=
+                    ["PENDING", "PREPARING", "READY", "COMPLETED"].indexOf(
+                      order.status,
+                    )
+                  }
+                >
+                  {label}
+                </li>
+              ))}
+            </ol>
+          )}
+          <details className="ticket-composition">
+            <summary>Состав заказа · {order.items.length}</summary>
+            <ul>
+              {order.items.map((item) => (
+                <li key={item.id}>
+                  <span>
+                    {item.name_at_moment} × {item.quantity}
+                  </span>
+                  <strong>{money(item.price_at_moment * item.quantity)}</strong>
+                </li>
+              ))}
+            </ul>
+          </details>
+          {order.payment_status === "DEMO_REFUNDED" && (
+            <p className="order-smallprint">
+              Возврат подтверждён сервером. Повторная проверка не создаёт новый
+              возврат.
+            </p>
+          )}
           <p className="order-smallprint">
             Покажите номер сотруднику. Статус — по последнему обновлению.
           </p>
