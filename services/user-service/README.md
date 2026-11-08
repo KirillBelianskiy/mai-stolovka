@@ -3,6 +3,32 @@
 Stage 2 Telegram client/staff authentication and own-profile API.
 See the root README and architecture documents for responsibilities and local infrastructure.
 
+## Notification recipient permission contract
+
+User Service owns the verified Telegram identity-to-recipient mapping and permission state.
+Only a fresh, HMAC-verified raw Telegram `initData` carrying `allows_write_to_pm: true`, or a
+Telegram `WriteAccessAllowed` update accepted through the single secret-authenticated webhook,
+can grant permission. Missing evidence never grants or revokes permission. An authenticated
+Notification service can resolve one recipient or report a definitive recipient block; it cannot
+read profile data or access `users_db` directly.
+
+Internal paths (after the existing `/api/v1/users` proxy prefix):
+
+- `GET /internal/v1/notification-recipients/{user_id}` requires the
+  `notification:recipient:read` scope.
+- `POST /internal/v1/notification-recipients/{user_id}/blocked` requires the separate
+  `notification:permission:report` scope and uses `notification_id` plus `reason` for idempotency.
+- `POST /internal/v1/telegram/webhook` is the single public Telegram intake and requires the configured
+  `X-Telegram-Bot-Api-Secret-Token` header and durably deduplicates `update_id` before returning.
+
+Notification service JWTs must be RS256, expire within five minutes, and contain `iss`, `aud`,
+`sub=notification-service`, unique `jti`, `token_use=service`, and space-delimited scopes. Keep the
+Notification private signing key only in Notification; configure its separate public key and
+matching issuer/audience/key id in User Service. Never reuse end-user JWT keys or log credentials,
+raw webhook bodies, Telegram IDs, or response bodies. Provision the webhook secret out of band;
+production key management, webhook registration, token rotation, freshness limits and retention
+remain deployment-owner decisions.
+
 From this directory:
 
 ```sh

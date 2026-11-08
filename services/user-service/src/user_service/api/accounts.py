@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import insert
 from starlette.concurrency import run_in_threadpool
 
 from user_service.api.dependencies import Claims, LoginSession, Session
+from user_service.api.recipients import record_init_data_permission
 from user_service.api.schemas import (
     LoginResponse,
     ProfileUpdate,
@@ -134,6 +135,8 @@ async def telegram_login(
     user = (await db.scalars(upsert)).one_or_none()
     if user is None:
         raise HTTPException(403, "Staff must use staff authentication")
+    if identity.allows_write_to_pm is True:
+        await record_init_data_permission(db, user, identity.auth_date)
     await revoke_presented_session(db, request.cookies.get(SESSION_COOKIE))
     now = datetime.now(UTC)
     absolute_expiry = now + timedelta(days=SESSION_ABSOLUTE_DAYS)
