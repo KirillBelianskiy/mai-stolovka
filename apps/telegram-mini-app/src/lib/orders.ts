@@ -1,3 +1,5 @@
+import { apiUrl } from "./api-origin.ts";
+
 import { AuthApiError } from "./auth.ts";
 import type { CheckoutIntent } from "./checkout";
 
@@ -167,7 +169,7 @@ async function request(
   init: RequestInit = {},
   fetcher: typeof fetch = fetch,
 ): Promise<unknown> {
-  const response = await fetcher(`/api/v1/orders${path}`, {
+  const response = await fetcher(apiUrl(`/api/v1/orders${path}`), {
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,

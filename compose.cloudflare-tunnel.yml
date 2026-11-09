@@ -1,0 +1,10 @@
+services:
+  proxy:
+    ports:
+      - "127.0.0.1:8080:8082"
+    volumes:
+      - ./infra/nginx/public-api.conf:/etc/nginx/conf.d/mai-public-api.conf:ro
+  user-service:
+    environment:
+      APP_SESSION_COOKIE_ALLOWED_ORIGINS: http://localhost:8180,http://localhost:8181,https://maistolovka.me
+      APP_TELEGRAM_BOT_TOKEN: ${CLOUDFLARE_TELEGRAM_BOT_TOKEN:-${TELEGRAM_BOT_TOKEN:-}}

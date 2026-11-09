@@ -1,3 +1,5 @@
+import { apiOrigin, apiUrl } from "./api-origin.ts";
+
 export const MAX_INTEGER = 2 ** 31 - 1;
 export const CART_KEY = "mai-food:public-cart:v1";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -118,7 +120,7 @@ async function get(
   signal?: AbortSignal,
   fetcher: typeof fetch = fetch,
 ): Promise<unknown> {
-  const response = await fetcher(path, {
+  const response = await fetcher(apiUrl(path), {
     signal,
     cache: "no-store",
     credentials: "omit",
@@ -235,6 +237,11 @@ export function imageUrl(value: string | null): string | undefined {
   if (!value) return undefined;
   try {
     const url = new URL(value);
+    // The Pages export contains the same assets as the local demo catalog.
+    if (apiOrigin && url.origin === "http://localhost:8180" &&
+        /^\/design\/dishes\/[a-z-]+\.jpg$/.test(url.pathname)) {
+      return url.pathname;
+    }
     return ["https:", "http:"].includes(url.protocol) ? url.href : undefined;
   } catch {
     return undefined;
