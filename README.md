@@ -42,6 +42,8 @@ The root npm workspace has one lockfile. Container image tags are explicit relea
 
 ## Run the local stack
 
+See the [local demo guide](LOCAL-RUN.md), the [Cloudflare Pages and Tunnel guide](docs/deployment/cloudflare-tunnel.md), or the [alternative Linux VPS guide](docs/deployment/vps.md).
+
 For a pre-populated, isolated demonstration with synthetic Telegram sign-in, six photographed
 dishes and staff accounts, follow the [UI demo launch guide](docs/stages/stage-5-ui-completeness.md#reproduce).
 It uses ports 8180/8181 and a dedicated Compose project. The lower-level setup below uses 8080/8081.

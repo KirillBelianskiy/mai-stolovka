@@ -1,3 +1,5 @@
+import { apiOrigin, apiUrl } from "./api-origin.ts";
+
 export type UserProfile = {
   id: string;
   telegram_id: number | null;
@@ -128,10 +130,10 @@ async function request(
   init: RequestInit,
   fetcher: Fetcher,
 ): Promise<Response> {
-  return fetcher(path, {
+  return fetcher(apiUrl(path), {
     ...init,
     cache: "no-store",
-    credentials: "same-origin",
+    credentials: apiOrigin ? "include" : "same-origin",
     redirect: "error",
   });
 }
