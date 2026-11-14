@@ -1,0 +1,601 @@
+{
+  "started_utc": "2026-11-14T10:45:50.544930+00:00",
+  "scope": "local synthetic API acceptance",
+  "full_journey_acceptance": "not_run",
+  "checks": [
+    {
+      "stage": "build images",
+      "status": "pass"
+    },
+    {
+      "stage": "start disposable stack",
+      "status": "pass"
+    },
+    {
+      "stage": "migrate databases",
+      "status": "pass",
+      "observed": {
+        "user-service": "0003_recipient_permissions (head)",
+        "menu-service": "0001_menu (head)",
+        "order-service": "0002_demo_wallet (head)",
+        "notification-service": "0001_inbox (head)"
+      }
+    },
+    {
+      "stage": "image identity",
+      "status": "pass",
+      "observed": {
+        "kafka": "sha256:833b867a9585a141da455dc2b57431c65cbccb27f11c91f694444cca9f777e0f",
+        "kitchen-app": "sha256:4c02b601813b2d7d8676c6ca039bf336beec86c974a5827f25f238d50c9059f4",
+        "menu-service": "sha256:c850f34b87147aef8591f2a190fff16687b7e75fa03db3212af985fdbf4515c4",
+        "notification-service": "sha256:ea8e7af63dd6f8b04e6c60eb00132704a486ad74def30895758d460404d7c46c",
+        "order-service": "sha256:bfa41428df9cd375ccd518eff6382d8e3d43e8e9f9612af498d9061af4e5b2af",
+        "postgres": "sha256:5c4783a8cc3f0074912164f94dfa1be4e043438f0f707cf968d7af9a0d31a2c8",
+        "proxy": "sha256:0e52bd054126cdc040b1276c0af347aeb02a41b9cfe305d6094767ac30e97949",
+        "telegram-mini-app": "sha256:cbc55f8ebbf4641e4e813d0d49ce299d39a08fb3c3a6140e476270fe28716dab",
+        "user-service": "sha256:35308e1530f477cdad075101384b0d0292c1592395e061b99ba8e75ed904635b",
+        "websocket-service": "sha256:0be7929f046120906e3bad458ee1ee64dfb1f8da77e022957e79a5c9b1566877"
+      }
+    },
+    {
+      "stage": "anonymous preflight",
+      "status": "pass",
+      "observed": {
+        "checked_at": "2026-11-14T10:46:25.609615+00:00",
+        "scope": "anonymous local HTTP route preflight",
+        "origins": {
+          "customer": "http://127.0.0.1:64169",
+          "staff": "http://127.0.0.1:64170"
+        },
+        "preflight_passed": true,
+        "journey_acceptance": "not_run",
+        "unexecuted_scenarios": [
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "A5",
+          "A6",
+          "A7",
+          "A8"
+        ],
+        "checks": [
+          {
+            "surface": "customer",
+            "path": "/",
+            "passed": true,
+            "http_status": 200
+          },
+          {
+            "surface": "customer",
+            "path": "/health/user/ready",
+            "passed": true,
+            "http_status": 200
+          },
+          {
+            "surface": "customer",
+            "path": "/health/menu/ready",
+            "passed": true,
+            "http_status": 200
+          },
+          {
+            "surface": "customer",
+            "path": "/health/order/ready",
+            "passed": true,
+            "http_status": 200
+          },
+          {
+            "surface": "customer",
+            "path": "/health/notification/ready",
+            "passed": true,
+            "http_status": 200
+          },
+          {
+            "surface": "customer",
+            "path": "/health/websocket/ready",
+            "passed": true,
+            "http_status": 200
+          },
+          {
+            "surface": "customer",
+            "path": "/api/v1/menu/categories",
+            "passed": true,
+            "http_status": 200
+          },
+          {
+            "surface": "customer",
+            "path": "/api/v1/menu/items?limit=1&offset=0",
+            "passed": true,
+            "http_status": 200
+          },
+          {
+            "surface": "customer",
+            "path": "/api/v1/users/me",
+            "passed": true,
+            "http_status": 401
+          },
+          {
+            "surface": "customer",
+            "path": "/api/v1/orders/",
+            "passed": true,
+            "http_status": 401
+          },
+          {
+            "surface": "customer",
+            "path": "/api/v1/orders/wallet",
+            "passed": true,
+            "http_status": 401
+          },
+          {
+            "surface": "staff",
+            "path": "/",
+            "passed": true,
+            "http_status": 200
+          },
+          {
+            "surface": "staff",
+            "path": "/health/user/ready",
+            "passed": true,
+            "http_status": 200
+          },
+          {
+            "surface": "staff",
+            "path": "/health/menu/ready",
+            "passed": true,
+            "http_status": 200
+          },
+          {
+            "surface": "staff",
+            "path": "/health/order/ready",
+            "passed": true,
+            "http_status": 200
+          },
+          {
+            "surface": "staff",
+            "path": "/health/notification/ready",
+            "passed": true,
+            "http_status": 200
+          },
+          {
+            "surface": "staff",
+            "path": "/health/websocket/ready",
+            "passed": true,
+            "http_status": 200
+          },
+          {
+            "surface": "staff",
+            "path": "/api/v1/menu/categories",
+            "passed": true,
+            "http_status": 200
+          },
+          {
+            "surface": "staff",
+            "path": "/api/v1/menu/items?limit=1&offset=0",
+            "passed": true,
+            "http_status": 200
+          },
+          {
+            "surface": "staff",
+            "path": "/api/v1/users/me",
+            "passed": true,
+            "http_status": 401
+          },
+          {
+            "surface": "staff",
+            "path": "/api/v1/orders/",
+            "passed": true,
+            "http_status": 401
+          },
+          {
+            "surface": "staff",
+            "path": "/api/v1/orders/wallet",
+            "passed": true,
+            "http_status": 401
+          }
+        ]
+      }
+    },
+    {
+      "stage": "synthetic customer and staff authentication",
+      "status": "pass"
+    },
+    {
+      "stage": "menu and future slot fixtures",
+      "status": "pass"
+    },
+    {
+      "stage": "balance rejection and idempotent ADMIN credit",
+      "status": "pass"
+    },
+    {
+      "stage": "concurrent duplicate checkout and refund",
+      "status": "pass"
+    },
+    {
+      "stage": "repricing and immutable order history",
+      "status": "pass"
+    },
+    {
+      "stage": "COOK preparation and CASHIER issuance",
+      "status": "pass"
+    }
+  ],
+  "fixtures": {
+    "ADMIN": "d86d883e-4bcb-4797-9217-db32cac14d9b",
+    "COOK": "bd9b6b7a-e196-4c90-93d0-8f525eaaaaa6",
+    "CASHIER": "68e13e37-33fc-4075-bd83-21178181c66d",
+    "CLIENT_A": "6c7e1e08-f315-4df6-bcf1-b23e25f74b66",
+    "CLIENT_B": "6b07110f-5cf0-4267-92af-905fff687889",
+    "item": "0b70c706-de05-45ee-8934-f752e5d65452",
+    "slot": "7813e344-42e8-427f-8f9f-220e456aa2e9",
+    "cancelled_order": "8ac45e98-e161-41cc-b9e7-7cfd9f26b68c",
+    "completed_order": "1490b2e8-25bc-4d63-9b0c-7df7580446fe"
+  },
+  "database_observations": [
+    {
+      "orders": [
+        [
+          "8ac45e98-e161-41cc-b9e7-7cfd9f26b68c",
+          "CANCELLED",
+          2,
+          "DEMO_REFUNDED"
+        ]
+      ],
+      "ledger": [
+        [
+          "CREDIT",
+          50000
+        ],
+        [
+          "DEBIT",
+          12000
+        ],
+        [
+          "REFUND",
+          12000
+        ]
+      ],
+      "events": [
+        [
+          1,
+          "ORDER_CREATED"
+        ],
+        [
+          2,
+          "ORDER_CANCELLED"
+        ]
+      ],
+      "balance": 50000,
+      "capacity_used": 0
+    },
+    {
+      "orders": [
+        [
+          "1490b2e8-25bc-4d63-9b0c-7df7580446fe",
+          "COMPLETED",
+          4,
+          "DEMO_PAID"
+        ],
+        [
+          "8ac45e98-e161-41cc-b9e7-7cfd9f26b68c",
+          "CANCELLED",
+          2,
+          "DEMO_REFUNDED"
+        ]
+      ],
+      "ledger": [
+        [
+          "CREDIT",
+          50000
+        ],
+        [
+          "DEBIT",
+          12000
+        ],
+        [
+          "DEBIT",
+          15000
+        ],
+        [
+          "REFUND",
+          12000
+        ]
+      ],
+      "events": [
+        [
+          1,
+          "ORDER_CREATED"
+        ],
+        [
+          1,
+          "ORDER_CREATED"
+        ],
+        [
+          2,
+          "ORDER_CANCELLED"
+        ],
+        [
+          2,
+          "ORDER_STATUS_UPDATED"
+        ],
+        [
+          3,
+          "ORDER_STATUS_UPDATED"
+        ],
+        [
+          4,
+          "ORDER_STATUS_UPDATED"
+        ]
+      ],
+      "balance": 35000,
+      "capacity_used": 1
+    }
+  ],
+  "http_observations": [
+    {
+      "request": "POST /api/v1/users/auth/staff (anonymous)",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "request": "POST /api/v1/users/auth/staff (anonymous)",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "request": "POST /api/v1/users/auth/staff (anonymous)",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "request": "POST /api/v1/users/auth/telegram (anonymous)",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "request": "POST /api/v1/users/auth/telegram (anonymous)",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "request": "POST /api/v1/menu/categories (ADMIN)",
+      "expected": 201,
+      "status": 201
+    },
+    {
+      "request": "POST /api/v1/menu/items (ADMIN)",
+      "expected": 201,
+      "status": 201
+    },
+    {
+      "request": "POST /api/v1/orders/slots (ADMIN)",
+      "expected": 201,
+      "status": 201
+    },
+    {
+      "request": "GET /api/v1/orders/wallet (CLIENT_A)",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "request": "POST /api/v1/orders/ (CLIENT_A)",
+      "expected": 409,
+      "status": 409
+    },
+    {
+      "request": "GET /api/v1/orders/wallet (CLIENT_A)",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "request": "POST /api/v1/orders/wallet/credits (CLIENT_A)",
+      "expected": 403,
+      "status": 403
+    },
+    {
+      "request": "POST /api/v1/orders/wallet/credits (COOK)",
+      "expected": 403,
+      "status": 403
+    },
+    {
+      "request": "POST /api/v1/orders/wallet/credits (CASHIER)",
+      "expected": 403,
+      "status": 403
+    },
+    {
+      "request": "POST /api/v1/orders/wallet/credits (ADMIN)",
+      "expected": 201,
+      "status": 201
+    },
+    {
+      "request": "POST /api/v1/orders/wallet/credits (ADMIN)",
+      "expected": 201,
+      "status": 201
+    },
+    {
+      "request": "POST /api/v1/orders/wallet/credits (ADMIN)",
+      "expected": 422,
+      "status": 422
+    },
+    {
+      "request": "POST /api/v1/orders/wallet/credits (ADMIN)",
+      "expected": 409,
+      "status": 409
+    },
+    {
+      "request": "GET /api/v1/orders/wallet (CLIENT_A)",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "request": "POST /api/v1/orders/ (CLIENT_A)",
+      "expected": 201,
+      "status": 201
+    },
+    {
+      "request": "POST /api/v1/orders/ (CLIENT_A)",
+      "expected": 201,
+      "status": 201
+    },
+    {
+      "request": "GET /api/v1/orders/wallet (CLIENT_A)",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "request": "POST /api/v1/orders/ (CLIENT_A)",
+      "expected": 409,
+      "status": 409
+    },
+    {
+      "request": "GET /api/v1/orders/8ac45e98-e161-41cc-b9e7-7cfd9f26b68c (CLIENT_B)",
+      "expected": 404,
+      "status": 404
+    },
+    {
+      "request": "POST /api/v1/orders/8ac45e98-e161-41cc-b9e7-7cfd9f26b68c/cancel (CLIENT_B)",
+      "expected": 404,
+      "status": 404
+    },
+    {
+      "request": "POST /api/v1/orders/8ac45e98-e161-41cc-b9e7-7cfd9f26b68c/cancel (COOK)",
+      "expected": 403,
+      "status": 403
+    },
+    {
+      "request": "POST /api/v1/orders/8ac45e98-e161-41cc-b9e7-7cfd9f26b68c/cancel (CASHIER)",
+      "expected": 403,
+      "status": 403
+    },
+    {
+      "request": "POST /api/v1/orders/8ac45e98-e161-41cc-b9e7-7cfd9f26b68c/cancel (CLIENT_A)",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "request": "POST /api/v1/orders/8ac45e98-e161-41cc-b9e7-7cfd9f26b68c/cancel (CLIENT_A)",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "request": "GET /api/v1/orders/wallet (CLIENT_A)",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "request": "POST /api/v1/orders/ (CLIENT_A)",
+      "expected": 201,
+      "status": 201
+    },
+    {
+      "request": "GET /api/v1/orders/8ac45e98-e161-41cc-b9e7-7cfd9f26b68c (CLIENT_A)",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "request": "PUT /api/v1/menu/items/0b70c706-de05-45ee-8934-f752e5d65452 (COOK)",
+      "expected": 403,
+      "status": 403
+    },
+    {
+      "request": "PUT /api/v1/menu/items/0b70c706-de05-45ee-8934-f752e5d65452 (ADMIN)",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "request": "POST /api/v1/orders/ (CLIENT_A)",
+      "expected": 409,
+      "status": 409
+    },
+    {
+      "request": "GET /api/v1/orders/wallet (CLIENT_A)",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "request": "GET /api/v1/orders/8ac45e98-e161-41cc-b9e7-7cfd9f26b68c (CLIENT_A)",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "request": "DELETE /api/v1/orders/slots/7813e344-42e8-427f-8f9f-220e456aa2e9 (ADMIN)",
+      "expected": 409,
+      "status": 409
+    },
+    {
+      "request": "POST /api/v1/orders/ (CLIENT_A)",
+      "expected": 201,
+      "status": 201
+    },
+    {
+      "request": "GET /api/v1/orders/ (COOK)",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "request": "PATCH /api/v1/orders/1490b2e8-25bc-4d63-9b0c-7df7580446fe/status (CASHIER)",
+      "expected": 403,
+      "status": 403
+    },
+    {
+      "request": "PATCH /api/v1/orders/1490b2e8-25bc-4d63-9b0c-7df7580446fe/status (COOK)",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "request": "PATCH /api/v1/orders/1490b2e8-25bc-4d63-9b0c-7df7580446fe/status (COOK)",
+      "expected": 409,
+      "status": 409
+    },
+    {
+      "request": "PATCH /api/v1/orders/1490b2e8-25bc-4d63-9b0c-7df7580446fe/status (COOK)",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "request": "PATCH /api/v1/orders/1490b2e8-25bc-4d63-9b0c-7df7580446fe/status (COOK)",
+      "expected": 409,
+      "status": 409
+    },
+    {
+      "request": "POST /api/v1/orders/1490b2e8-25bc-4d63-9b0c-7df7580446fe/cancel (CLIENT_A)",
+      "expected": 409,
+      "status": 409
+    },
+    {
+      "request": "PATCH /api/v1/orders/1490b2e8-25bc-4d63-9b0c-7df7580446fe/status (COOK)",
+      "expected": 403,
+      "status": 403
+    },
+    {
+      "request": "PATCH /api/v1/orders/1490b2e8-25bc-4d63-9b0c-7df7580446fe/status (CASHIER)",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "request": "PATCH /api/v1/orders/1490b2e8-25bc-4d63-9b0c-7df7580446fe/status (CASHIER)",
+      "expected": 409,
+      "status": 409
+    },
+    {
+      "request": "POST /api/v1/orders/1490b2e8-25bc-4d63-9b0c-7df7580446fe/cancel (CLIENT_A)",
+      "expected": 409,
+      "status": 409
+    },
+    {
+      "request": "GET /api/v1/orders/ (CLIENT_B)",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "request": "GET /api/v1/orders/wallet (CLIENT_A)",
+      "expected": 200,
+      "status": 200
+    }
+  ],
+  "source_revision": "c1865e6ccfddc697b872996326c30e8dce803455",
+  "compose_project": "mai-accept-dfb81e3da78f45e5",
+  "cleanup": "pass",
+  "local_api_passed": true,
+  "finished_utc": "2026-11-14T10:46:31.237946+00:00"
+}

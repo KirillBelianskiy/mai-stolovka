@@ -25,11 +25,27 @@ remain in Docker's cache.
 
 The API run exercises User login, ADMIN credit and fixtures, concurrent same-key checkout,
 concurrent same-version cancellation, wrong-owner and role denial, and the COOK-to-CASHIER
-handoff through the two proxy origins. The committed observations cover exactly-once local
-state and REST reconciliation. The full candidate gates below also require real browser/UI,
+handoff through the two proxy origins. The committed observations cover exactly-once local state and current order detail over REST. The full candidate gates below also require real browser/UI,
 Telegram, staff network and worker/operations evidence.
 
 See [release checklist](mvp/release-checklist.md) and [pilot evidence](mvp/pilot-results.md).
+
+## Verified baseline results (2026-11-14)
+
+Application base: `585f6147dc2c6fca6301d6e6339afd10f4991944` (`codex/ui-completeness`).
+The [local report](acceptance/mac-local-2026-11-14.json) was generated at
+`c1865e6ccfddc697b872996326c30e8dce803455` with Python 3.12.8, Docker 29.1.2 and Compose
+2.40.3-desktop.1. The evidence-only descendant adds this report and its interpretation.
+
+| Command or check | Observed result |
+| --- | --- |
+| `python3 tests/e2e/mvp_acceptance.py --output /tmp/mai-accept-c1865e6.json` | 11 stages passed, including 22 anonymous route checks and 52 authenticated or login requests. Both apps and all API images built. Four database migrations reached their recorded heads. |
+| Concurrent checkout and cancellation | Two same-key checkout responses shared one order, original/replay flags and one 12,000-kopeck debit. Concurrent cancellation left one refund, one cancellation event, 50,000 kopecks and zero capacity used. After cancellation, replay returned the original response and GET returned CANCELLED v2. |
+| Repricing and staff flow | Old total rejected, history retained 12,000 kopecks, then explicit 15,000-kopeck confirmation created the second order. COOK prepared and marked it READY. CASHIER completed it at version 4. Wrong roles, stale versions, terminal cancellation and full capacity were denied. Final wallet: 35,000 kopecks, one capacity unit used. |
+| `python3 -m unittest discover -s tests/e2e -v` and `python3 -m unittest discover -s tests/contracts -q` | 2 harness regressions and 27 contract tests passed. Initial harness red was the missing module. |
+| Order `python -m pytest -p no:cacheprovider tests/test_order_integration.py tests/test_wallet_integration.py -q --tb=no` and `python -m alembic check` | 39 passed and no schema drift on a temporary UTF-8 PostgreSQL 18.6 database, using existing dependencies and the pinned Order source. Covers slot cutoff, forced debit/refund/credit rollback, concurrent wallet operations and refund after disabling payments. The first run used a SQL_ASCII database and returned 24 failures; the corrected UTF-8 run passed. Existing Starlette/httpx deprecation warning. |
+| `ruff check tests/e2e`, `ruff format --check tests/e2e`, `git diff --check` | Passed. |
+| Docker cleanup | Verified no containers, volumes or networks with the completed acceptance project's label. |
 
 ## Reproduce the completed preflight
 
