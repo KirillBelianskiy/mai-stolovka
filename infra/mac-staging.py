@@ -1,6 +1,7 @@
 """Manage the isolated MAI Food Mac staging project and its pinned static exports."""
 
 import argparse
+import base64
 import fcntl
 import os
 import re
@@ -11,7 +12,12 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-STATE = ROOT / ".private/mac-staging"
+INSTANCE = os.environ.get("MAI_STAGING_INSTANCE", "baseline")
+if INSTANCE not in {"baseline", "release"}:
+    raise SystemExit("Set MAI_STAGING_INSTANCE to baseline or release")
+RELEASE = INSTANCE == "release"
+CUSTOMER_PORT, KITCHEN_PORT = (18480, 18481) if RELEASE else (18280, 18281)
+STATE = ROOT / (".private/mac-staging-release" if RELEASE else ".private/mac-staging")
 ARTIFACTS = STATE / "artifacts"
 ENV_FILE = STATE / "staging.env"
 BASELINE = "585f6147dc2c6fca6301d6e6339afd10f4991944"
@@ -23,7 +29,7 @@ COMPOSE = [
     "desktop-linux",
     "compose",
     "--project-name",
-    "mai-food-mac-staging",
+    "mai-food-mac-staging-release" if RELEASE else "mai-food-mac-staging",
     "--env-file",
     str(ENV_FILE),
     "-f",
@@ -45,6 +51,11 @@ def compose(*args, **kwargs):
     # Compose gives the shell priority over --env-file. Keep project settings self-contained.
     inherited = ("PATH", "HOME", "TMPDIR", "TERM", "USER", "LOGNAME", "DOCKER_CONFIG")
     env = {key: os.environ[key] for key in inherited if key in os.environ}
+    env.update(
+        STAGING_CUSTOMER_PORT=str(CUSTOMER_PORT),
+        STAGING_KITCHEN_PORT=str(KITCHEN_PORT),
+        STAGING_ARTIFACTS_DIR=str(ARTIFACTS),
+    )
     run(*COMPOSE, *args, env=env, **kwargs)
 
 
@@ -68,9 +79,40 @@ def init():
         )
         with config.open("a") as stream:
             stream.write(
-                "\nSTAGING_CUSTOMER_ORIGIN=http://localhost:18280\n"
-                "STAGING_KITCHEN_ORIGIN=http://localhost:18281\n"
+                f"\nSTAGING_CUSTOMER_ORIGIN=http://localhost:{CUSTOMER_PORT}\n"
+                f"STAGING_KITCHEN_ORIGIN=http://localhost:{KITCHEN_PORT}\n"
                 "STAGING_WEBHOOK_ENABLED=false\n"
+                "STAGING_KITCHEN_KAFKA_ENABLED=false\n"
+                "STAGING_DISPATCH_FAKE_ENABLED=false\n"
+            )
+        if RELEASE:
+            private = run(
+                "openssl",
+                "genpkey",
+                "-algorithm",
+                "RSA",
+                "-pkeyopt",
+                "rsa_keygen_bits:3072",
+                capture_output=True,
+                timeout=60,
+            ).stdout
+            public = run(
+                "openssl",
+                "pkey",
+                "-pubout",
+                input=private,
+                capture_output=True,
+                timeout=10,
+            ).stdout
+            with config.open("a") as stream:
+                stream.write(
+                    f"STAGING_DISPATCH_SIGNING_KEY_BASE64={base64.b64encode(private).decode()}\n"
+                )
+            config.write_text(
+                config.read_text().replace(
+                    "NOTIFICATION_SERVICE_PUBLIC_KEY_BASE64=\n",
+                    f"NOTIFICATION_SERVICE_PUBLIC_KEY_BASE64={base64.b64encode(public).decode()}\n",
+                )
             )
         config.rename(ENV_FILE)
     print(f"Initialized {ENV_FILE}")
@@ -131,7 +173,10 @@ def validate_config():
         r"[A-Za-z0-9_-]{1,256}", fields.get("TELEGRAM_WEBHOOK_SECRET", "")
     ):
         raise SystemExit("An enabled webhook requires a valid Telegram webhook secret")
-    for key, port in (("STAGING_CUSTOMER_ORIGIN", 18280), ("STAGING_KITCHEN_ORIGIN", 18281)):
+    for key, port in (
+        ("STAGING_CUSTOMER_ORIGIN", CUSTOMER_PORT),
+        ("STAGING_KITCHEN_ORIGIN", KITCHEN_PORT),
+    ):
         origin = fields.get(key, "")
         if origin != f"http://localhost:{port}" and not re.fullmatch(
             r"https://[a-z0-9-]+(\.[a-z0-9-]+)+(:(8443|10000))?", origin
@@ -144,13 +189,44 @@ def validate_config():
         for origin in (customer, kitchen)
     ):
         raise SystemExit("Use separate staging origins outside the production domain")
+    for name in ("STAGING_KITCHEN_KAFKA_ENABLED", "STAGING_DISPATCH_FAKE_ENABLED"):
+        if fields.get(name, "false") not in {"true", "false"}:
+            raise SystemExit(f"Set {name} to true or false")
+    if (
+        fields.get("STAGING_KITCHEN_KAFKA_ENABLED") == "true"
+        and not (
+            ROOT / "services/websocket-service/src/websocket_service/infrastructure/kafka.py"
+        ).is_file()
+    ):
+        raise SystemExit("Kitchen Kafka requires the reviewed #63 implementation")
+    dispatch = fields.get("STAGING_DISPATCH_FAKE_ENABLED") == "true"
+    if dispatch:
+        if not RELEASE or not fields.get("TELEGRAM_BOT_TOKEN", "").startswith("local-staging:"):
+            raise SystemExit(
+                "Fake dispatch requires the isolated release instance and synthetic token"
+            )
+        if not (
+            ROOT / "services/notification-service/src/notification_service/dispatch.py"
+        ).is_file():
+            raise SystemExit("Fake dispatch requires the reviewed #64 implementation")
+        if not all(
+            fields.get(key)
+            for key in (
+                "NOTIFICATION_SERVICE_PUBLIC_KEY_BASE64",
+                "STAGING_DISPATCH_SIGNING_KEY_BASE64",
+            )
+        ):
+            raise SystemExit("Fake dispatch requires the dedicated Notification signing key pair")
     compose("config", "--quiet")
+    return dispatch
 
 
 def up():
-    validate_config()
+    dispatch = validate_config()
     if not all((ARTIFACTS / "current" / app / "index.html").is_file() for app in APPS):
         raise SystemExit("Build the pinned exports with mac-staging.py build")
+    if RELEASE and not dispatch:
+        compose("--profile", "dispatch-fake", "stop", "notification-dispatch", "fake-bot")
     compose("up", "-d", "--wait", "--wait-timeout", "300", "postgres", "kafka")
     compose(
         "build",
@@ -193,6 +269,18 @@ def up():
         "--config",
         "min.insync.replicas=1",
     )
+    if dispatch:
+        compose("build", "notification-dispatch")
+        compose(
+            "run",
+            "--rm",
+            "--no-deps",
+            "--entrypoint",
+            "/app/.venv/bin/alembic",
+            "notification-dispatch",
+            "current",
+            "--check-heads",
+        )
     compose("up", "-d", "notification-inbox", "outbox-worker")
     compose(
         "up",
@@ -203,6 +291,9 @@ def up():
         "notification-service",
         "staging-ingress",
     )
+
+    if dispatch:
+        compose("up", "-d", "--wait", "--wait-timeout", "120", "notification-dispatch")
 
 
 def main():
@@ -228,9 +319,9 @@ def main():
         elif args.action == "up":
             up()
         elif args.action == "status":
-            compose("ps", "-a")
+            compose("--profile", "dispatch-fake", "ps", "-a")
         else:
-            compose("down")
+            compose("--profile", "dispatch-fake", "down")
 
 
 if __name__ == "__main__":
