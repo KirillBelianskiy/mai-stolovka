@@ -83,6 +83,15 @@ def test_recipient_state_webhook_block_idempotency_and_regrant(
         "reason": "bot_forbidden",
     }
     block_path = f"{path}/blocked"
+    for field, invalid in (
+        ("notification_id", "not-a-uuid"),
+        ("expected_revision", str(report["expected_revision"])),
+        ("telegram_user_id", str(telegram_id)),
+    ):
+        rejected = client.post(block_path, json={**report, field: invalid}, headers=headers)
+        assert rejected.status_code == 422
+        assert rejected.json()["detail"][0]["loc"] == ["body", field]
+
     with ThreadPoolExecutor(max_workers=4) as pool:
         repeated_reports = list(
             pool.map(
@@ -134,6 +143,15 @@ def test_recipient_state_webhook_block_idempotency_and_regrant(
     granted = client.get(path, headers=headers).json()
     assert granted["state"] == "allowed"
     assert granted["telegram_chat_id"] == telegram_id
+    assert granted["revision"] > first.json()["revision"]
+    stale_after_regrant = client.post(
+        block_path, json={**report, "notification_id": str(uuid4())}, headers=headers
+    )
+    assert stale_after_regrant.status_code == 409
+    assert stale_after_regrant.json() == {
+        "detail": {"code": "REVISION_CONFLICT", "revision": granted["revision"]}
+    }
+    assert client.get(path, headers=headers).json() == granted
 
     conflicting_replay = client.post(
         "/internal/v1/telegram/webhook",
