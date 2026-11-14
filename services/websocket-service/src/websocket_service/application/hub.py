@@ -7,20 +7,22 @@ from uuid import UUID, uuid4
 class ClientQueue:
     messages: asyncio.Queue[dict[str, object]]
     overflow: asyncio.Event = field(default_factory=asyncio.Event)
+    unavailable: asyncio.Event = field(default_factory=asyncio.Event)
     shutdown: asyncio.Event = field(default_factory=asyncio.Event)
 
 
 class KitchenHub:
-    """Process-local fanout boundary; the Kafka consumer is owned by SCRUM-20."""
+    """Process-local fanout to authenticated Kitchen sessions."""
 
-    def __init__(self, queue_size: int) -> None:
+    def __init__(self, queue_size: int, *, ready: bool = True) -> None:
         self.queue_size = queue_size
         self.clients: dict[UUID, ClientQueue] = {}
         self.stopping = False
+        self.ready = ready
 
     def connect(self) -> tuple[UUID, ClientQueue]:
-        if self.stopping:
-            raise RuntimeError("Kitchen WebSocket hub is shutting down")
+        if self.stopping or not self.ready:
+            raise RuntimeError("Kitchen WebSocket hub is unavailable")
         client_id = uuid4()
         client = ClientQueue(messages=asyncio.Queue(maxsize=self.queue_size))
         client.messages.put_nowait({"type": "ready"})
@@ -29,6 +31,11 @@ class KitchenHub:
 
     def disconnect(self, client_id: UUID) -> None:
         self.clients.pop(client_id, None)
+
+    def suspend(self) -> None:
+        self.ready = False
+        for client in self.clients.values():
+            client.unavailable.set()
 
     async def shutdown(self) -> None:
         self.stopping = True
@@ -43,7 +50,9 @@ class KitchenHub:
             "order_id": str(order_id),
             "version": version,
         }
-        for client in tuple(self.clients.values()):
+        for client in self.clients.values():
+            if client.unavailable.is_set() or client.overflow.is_set():
+                continue
             try:
                 client.messages.put_nowait(message)
             except asyncio.QueueFull:
