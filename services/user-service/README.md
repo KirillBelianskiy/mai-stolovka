@@ -49,6 +49,13 @@ Set the actual origin(s) used by the Mini App. The `mai_session` cookie is Secur
 and scoped to `/api/v1/users/auth`. Use local HTTPS for browser engines that reject Secure cookies
 on HTTP localhost.
 
+The customer gateway must overwrite any incoming `X-MAI-Public-API` with `1` before forwarding
+public User requests. On marked requests to `GET /me` or `PATCH /me`, User Service verifies the
+access JWT and returns 403 for every role except `CLIENT`. Missing or invalid credentials still
+return 401. The gateway must also restrict public routes to its customer allowlist and keep
+`/auth/staff` and the Notification recipient endpoints private. Keep direct User Service access
+private so public requests cannot bypass the gateway.
+
 - `GET /health/live`: process availability and service identity.
 - `GET /health/ready`: bounded PostgreSQL query; 503 when unconfigured or unavailable.
 

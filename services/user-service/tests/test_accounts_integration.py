@@ -45,9 +45,12 @@ def test_telegram_login_profile_and_prohibited_role_edits(integration_client: Te
     assert value["user"]["role"] == "CLIENT"
     headers = {"Authorization": "Bearer " + value["access_token"]}
     assert client.get("/me", headers=headers).json()["id"] == value["user"]["id"]
+    public_headers = {**headers, "X-MAI-Public-API": "1"}
+    assert client.get("/me", headers=public_headers).json()["id"] == value["user"]["id"]
     assert client.patch("/me", headers=headers, json={"role": "ADMIN"}).status_code == 422
     assert (
-        client.patch("/me", headers=headers, json={"full_name": "Иван Петров"}).status_code == 200
+        client.patch("/me", headers=public_headers, json={"full_name": "Иван Петров"}).status_code
+        == 200
     )
     again = client.post(
         "/auth/telegram", json={"init_data": init_data()}, headers={"Origin": "https://testserver"}
@@ -158,6 +161,34 @@ def test_telegram_cannot_log_in_as_staff(
     )
 
 
+def test_public_gateway_rejects_staff_access_tokens(
+    integration_client: TestClient, integration_settings: Settings
+) -> None:
+    client = integration_client
+    password = "integration-only-" + uuid4().hex
+    for role in (Role.COOK, Role.CASHIER, Role.ADMIN):
+        login = f"gateway.{role.value.lower()}"
+        user_id = asyncio.run(provision_staff(login, "Staff", role, password, integration_settings))
+        auth = client.post("/auth/staff", json={"username": login, "password": password})
+        assert auth.status_code == 200
+        headers = {"Authorization": f"Bearer {auth.json()['access_token']}"}
+        assert client.get("/me", headers=headers).json()["id"] == user_id
+
+        public_headers = {**headers, "X-MAI-Public-API": "1"}
+        read = client.get("/me", headers=public_headers)
+        write = client.patch("/me", headers=public_headers, json={"full_name": "Changed"})
+        for response in (read, write):
+            assert response.status_code == 403
+            assert response.json() == {"detail": "Customer role required on the public API"}
+        assert client.get("/me", headers=headers).json()["full_name"] == "Staff"
+
+    invalid = client.get(
+        "/me", headers={"Authorization": "Bearer invalid", "X-MAI-Public-API": "1"}
+    )
+    assert invalid.status_code == 401
+    assert invalid.headers["www-authenticate"] == "Bearer"
+
+
 def _login(
     client: TestClient, telegram_id: int = 4567890123456, cookie: str | None = None
 ) -> dict[str, Any]:
@@ -239,12 +270,18 @@ def test_session_cookie_flags_origins_and_missing_invalid_cookie(
     assert "path=/api/v1/users/auth" in header and "domain=" not in header
     assert login.json().get("session_token") is None
     assert integration_client.post("/auth/session").status_code == 403
-    assert (
-        integration_client.post(
-            "/auth/session", headers={"Origin": "https://evil.example"}
-        ).status_code
-        == 403
-    )
+    cookie = integration_client.cookies.get("mai_session")
+    assert cookie is not None
+    for origin in (
+        "http://testserver",
+        "https://testserver:444",
+        "https://testserver.evil.example",
+    ):
+        headers = {"Origin": origin, "Cookie": f"mai_session={cookie}"}
+        assert integration_client.post("/auth/session", headers=headers).status_code == 403
+        assert integration_client.post("/auth/logout", headers=headers).status_code == 403
+    allowed = {"Origin": "https://testserver", "Cookie": f"mai_session={cookie}"}
+    assert integration_client.post("/auth/session", headers=allowed).status_code == 200
     assert (
         integration_client.post(
             "/auth/session",
@@ -272,6 +309,11 @@ def test_session_expiry_and_account_switch_revoke_prior_browser_session(
     headers = {"Origin": "https://testserver", "Cookie": f"mai_session={first_cookie}"}
     assert integration_client.post("/auth/session", headers=headers).status_code == 401
     assert second["user"]["id"] != first["user"]["id"]
+    restored = integration_client.post(
+        "/auth/session", headers={**headers, "Cookie": f"mai_session={second_cookie}"}
+    )
+    assert restored.status_code == 200
+    assert restored.json()["user"]["id"] == second["user"]["id"]
 
     async def expire_session() -> str:
         database = Database(integration_settings.database_url.get_secret_value(), 2)
