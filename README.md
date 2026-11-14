@@ -101,6 +101,8 @@ PostgreSQL; the explicit opt-in Outbox worker can publish them after topic provi
 and checks existing settings; SCRUM-18 consumer integration remains incomplete. Telegram access
 will require an HTTPS-accessible deployment and bot interaction permissions in a later stage.
 
+For the isolated Mac deployment workstream, see [Mac staging](docs/deployment/mac-staging.md).
+
 ## Backend development and checks
 
 Example for User Service; repeat in each of the five service directories:
