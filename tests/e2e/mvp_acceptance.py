@@ -26,6 +26,7 @@ ORDERS = "/api/v1/orders"
 USERS = "/api/v1/users"
 MENU = "/api/v1/menu"
 PRICE = 12000
+NEW_PRICE = 15000
 CREDIT = 50000
 SERVICES = (
     "postgres",
@@ -124,10 +125,10 @@ def launch_data(token, user_id):
     return urlencode(fields)
 
 
-def verify_checkout_pair(replies):
+def verify_idempotent_pair(replies):
     (first, first_flag), (second, second_flag) = replies
     require({first_flag, second_flag} == {"true", "false"}, "expected one original and one replay")
-    require(first == second, "original/replay order snapshots differ")
+    require(first == second, "original/replay response snapshots differ")
     return first
 
 
@@ -185,11 +186,18 @@ class Stack:
             TELEGRAM_WEBHOOK_SECRET="",
         )
         env_file.write_text("".join(f"{key}={value}\n" for key, value in settings.items()))
-        self.env = {
-            key: value
-            for key, value in os.environ.items()
-            if key not in settings and not key.startswith(("COMPOSE_", "DOCKER_"))
+        # Explicit interpolation inputs come from the private env file.
+        local_cli_settings = {
+            "PATH",
+            "HOME",
+            "USER",
+            "LOGNAME",
+            "LANG",
+            "TMPDIR",
+            "XDG_RUNTIME_DIR",
+            "SSH_AUTH_SOCK",
         }
+        self.env = {key: value for key, value in os.environ.items() if key in local_cli_settings}
         docker = ["docker"]
         context = command(docker + ["context", "show"], env=self.env)
         endpoint = command(
@@ -245,6 +253,19 @@ class Stack:
         )
         self.compose += ["-f", str(self.overlay)]
         config = json.loads(self.run("config", "--format", "json"))
+        require(config["name"] == self.name, "Compose selected the wrong project")
+        for resource_type in ("volumes", "networks"):
+            for resource in config.get(resource_type, {}).values():
+                require(
+                    not resource.get("external") and resource["name"].startswith(self.name + "_"),
+                    "Compose resource is outside the acceptance project",
+                )
+        for service in SERVICES:
+            dependencies = config["services"][service].get("depends_on", {})
+            require(
+                set(dependencies).issubset(SERVICES),
+                "acceptance requires an unexpected service dependency",
+            )
         expected = {
             (8080, self.customer.rsplit(":", 1)[1]),
             (8081, self.staff.rsplit(":", 1)[1]),
@@ -254,7 +275,10 @@ class Stack:
             for p in config["services"]["proxy"]["ports"]
             if p.get("host_ip") == "127.0.0.1"
         }
-        require(actual == expected, "proxy mapping differs from assigned loopback ports")
+        require(
+            actual == expected and len(config["services"]["proxy"]["ports"]) == len(expected),
+            "proxy mapping differs from assigned loopback ports",
+        )
 
     def build(self):
         self.run("build", *SERVICES, timeout=900)
@@ -316,6 +340,9 @@ class Journey:
             response = error
         with response:
             label = f"{method} {path.split('?')[0]} ({role or 'anonymous'})"
+            self.report["http_observations"].append(
+                {"request": label, "expected": expected, "status": response.status}
+            )
             require(
                 response.status == expected, f"{label}: expected {expected}, got {response.status}"
             )
@@ -335,6 +362,7 @@ class Journey:
             session, _ = self.http("POST", f"{USERS}/auth/staff", 200, body=credentials, staff=True)
             require(session["user"]["role"] == role, "wrong staff role")
             self.tokens[role] = session["access_token"]
+            self.report["fixtures"][role] = session["user"]["id"]
         for role, identity in (("CLIENT_A", 900001), ("CLIENT_B", 900002)):
             session, _ = self.http(
                 "POST",
@@ -350,12 +378,13 @@ class Journey:
         category, _ = self.http(
             "POST", f"{MENU}/categories", 201, "ADMIN", {"name": "Acceptance category"}, staff=True
         )
+        self.item = {"category_id": category["id"], "name": "Acceptance item", "price": PRICE}
         item, _ = self.http(
             "POST",
             f"{MENU}/items",
             201,
             "ADMIN",
-            {"category_id": category["id"], "name": "Acceptance item", "price": PRICE},
+            self.item,
             staff=True,
         )
         start = datetime.now(UTC) + timedelta(hours=2)
@@ -395,11 +424,28 @@ class Journey:
         key = str(uuid4())
         for role in ("CLIENT_A", "COOK", "CASHIER"):
             self.http("POST", f"{ORDERS}/wallet/credits", 403, role, credit, key, staff=True)
-        replies = [
-            self.http("POST", f"{ORDERS}/wallet/credits", 201, "ADMIN", credit, key, staff=True)
-            for _ in range(2)
-        ]
-        verify_checkout_pair(replies)
+
+        def credit_wallet():
+            return self.http(
+                "POST", f"{ORDERS}/wallet/credits", 201, "ADMIN", credit, key, staff=True
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            verify_idempotent_pair(
+                [
+                    future.result()
+                    for future in (pool.submit(credit_wallet), pool.submit(credit_wallet))
+                ]
+            )
+        self.http(
+            "POST",
+            f"{ORDERS}/wallet/credits",
+            422,
+            "ADMIN",
+            {**credit, "amount": 0},
+            str(uuid4()),
+            staff=True,
+        )
         self.http(
             "POST",
             f"{ORDERS}/wallet/credits",
@@ -414,13 +460,15 @@ class Journey:
     def duplicates_and_refund(self):
         key = str(uuid4())
         with ThreadPoolExecutor(max_workers=2) as pool:
-            order = verify_checkout_pair(list(pool.map(self.checkout, (key, key))))
+            order = verify_idempotent_pair(list(pool.map(self.checkout, (key, key))))
         require(
             order["payment_status"] == "DEMO_PAID" and order["total_amount"] == PRICE,
             "checkout lacks expected debit evidence",
         )
         self.report["fixtures"]["cancelled_order"] = order["id"]
         self.wallet(CREDIT - PRICE)
+        full, _ = self.checkout(str(uuid4()), expected=409)
+        require(full["detail"]["code"] == "SLOT_FULL", "wrong full-slot rejection")
         detail = f"{ORDERS}/{order['id']}"
         self.http("GET", detail, 404, "CLIENT_B")
         cancel = {"expected_version": order["version"]}
@@ -454,8 +502,31 @@ class Journey:
             0,
         )
 
+    def reprice(self):
+        fixture = self.report["fixtures"]
+        item = f"{MENU}/items/{fixture['item']}"
+        self.http("PUT", item, 403, "COOK", {**self.item, "price": NEW_PRICE}, staff=True)
+        self.http("PUT", item, 200, "ADMIN", {**self.item, "price": NEW_PRICE}, staff=True)
+        key = str(uuid4())
+        changed, _ = self.checkout(key, expected=409)
+        require(
+            changed["detail"]["code"] == "PRICE_CHANGED"
+            and changed["detail"]["total_amount"] == NEW_PRICE,
+            "repricing failed to return the new total",
+        )
+        self.wallet(CREDIT)
+        prior, _ = self.http("GET", f"{ORDERS}/{fixture['cancelled_order']}", 200, "CLIENT_A")
+        require(prior["items"][0]["price_at_moment"] == PRICE, "historical price changed")
+        self.http("DELETE", f"{ORDERS}/slots/{fixture['slot']}", 409, "ADMIN", staff=True)
+        self.cart["expected_total_amount"] = NEW_PRICE
+        self.confirmed_key = key
+
     def staff_flow(self):
-        order, _ = self.checkout(str(uuid4()))
+        order, replay = self.checkout(self.confirmed_key)
+        require(
+            replay == "false" and order["total_amount"] == NEW_PRICE,
+            "explicit confirmation did not create the repriced order",
+        )
         self.report["fixtures"]["completed_order"] = order["id"]
         path = f"{ORDERS}/{order['id']}"
         queue, _ = self.http(
@@ -482,7 +553,7 @@ class Journey:
         self.http("POST", path + "/cancel", 409, "CLIENT_A", {"expected_version": 4})
         history, _ = self.http("GET", f"{ORDERS}/", 200, "CLIENT_B")
         require(history["total"] == 0, "foreign customer history is exposed")
-        self.wallet(CREDIT - PRICE)
+        self.wallet(CREDIT - NEW_PRICE)
         self.snapshot(
             [
                 [self.report["fixtures"]["cancelled_order"], "CANCELLED", 2, "DEMO_REFUNDED"],
@@ -490,8 +561,8 @@ class Journey:
             ],
             [[1, "ORDER_CREATED"], [2, "ORDER_CANCELLED"], [1, "ORDER_CREATED"]]
             + [[version, "ORDER_STATUS_UPDATED"] for version in (2, 3, 4)],
-            [["CREDIT", CREDIT], ["DEBIT", PRICE], ["DEBIT", PRICE], ["REFUND", PRICE]],
-            CREDIT - PRICE,
+            [["CREDIT", CREDIT], ["DEBIT", PRICE], ["DEBIT", NEW_PRICE], ["REFUND", PRICE]],
+            CREDIT - NEW_PRICE,
             1,
         )
 
@@ -524,6 +595,7 @@ def run(output):
         "checks": [],
         "fixtures": {},
         "database_observations": [],
+        "http_observations": [],
     }
     stack = None
     cleanup_needed = False
@@ -548,15 +620,17 @@ def run(output):
                     "menu and future slot fixtures": journey.seed,
                     "balance rejection and idempotent ADMIN credit": journey.credit,
                     "concurrent duplicate checkout and refund": journey.duplicates_and_refund,
+                    "repricing and immutable order history": journey.reprice,
                     "COOK preparation and CASHIER issuance": journey.staff_flow,
                 }
                 for stage, check in stages.items():
                     print(stage, flush=True)
                     cleanup_needed |= stage == "start disposable stack"
                     observed = check()
-                    if stage == "anonymous preflight":
-                        require(observed["preflight_passed"], "anonymous route preflight failed")
                     result = {"stage": stage, "status": "pass"}
+                    if stage == "anonymous preflight" and not observed["preflight_passed"]:
+                        report["checks"].append({**result, "status": "fail", "observed": observed})
+                        break
                     if observed is not None:
                         result["observed"] = observed
                     report["checks"].append(result)

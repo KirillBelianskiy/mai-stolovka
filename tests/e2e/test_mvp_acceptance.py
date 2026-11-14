@@ -1,7 +1,7 @@
 import unittest
 from urllib.parse import parse_qs
 
-from mvp_acceptance import CheckFailure, launch_data, verify_checkout_pair
+from mvp_acceptance import CheckFailure, launch_data, verify_idempotent_pair
 
 
 class AcceptanceChecks(unittest.TestCase):
@@ -15,11 +15,11 @@ class AcceptanceChecks(unittest.TestCase):
 
     def test_identical_replies_require_one_original_and_one_replay(self):
         order = {"id": "fixture", "status": "PENDING"}
-        self.assertEqual(verify_checkout_pair([(order, "true"), (order, "false")]), order)
+        self.assertEqual(verify_idempotent_pair([(order, "true"), (order, "false")]), order)
         for replies in (
             [(order, "false"), (order, "false")],
             [(order, "true"), (order, None)],
             [(order, "true"), ({**order, "id": "duplicate"}, "false")],
         ):
             with self.subTest(replies=replies), self.assertRaises(CheckFailure):
-                verify_checkout_pair(replies)
+                verify_idempotent_pair(replies)
