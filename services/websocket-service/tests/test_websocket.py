@@ -228,3 +228,33 @@ def test_hub_shutdown_signals_connections_and_rejects_new_ones() -> None:
     with pytest.raises(RuntimeError):
         hub.connect()
     hub.disconnect(client_id)
+
+
+def test_kafka_enabled_without_assignment_refuses_ready(keypair: tuple[str, str]) -> None:
+    public_key, private_key = keypair
+    app = create_app(Settings(jwt_public_key_base64=public_key, kitchen_kafka_enabled=True))
+    # No broker task is started here, so this verifies the initial admission gate.
+    client = TestClient(app)
+    assert client.get("/health/ready").status_code == 503
+    with client.websocket_connect("/api/v1/ws/kitchen", headers={"origin": ORIGIN}) as websocket:
+        websocket.send_json({"type": "auth", "access_token": make_token(private_key)})
+        with pytest.raises(WebSocketDisconnect) as disconnected:
+            websocket.receive_json()
+        assert disconnected.value.code == 1013
+
+
+def test_websocket_closes_when_stream_is_suspended(keypair: tuple[str, str]) -> None:
+    public_key, private_key = keypair
+    app = create_app(Settings(jwt_public_key_base64=public_key))
+    with TestClient(app) as client:
+        with client.websocket_connect(
+            "/api/v1/ws/kitchen", headers={"origin": ORIGIN}
+        ) as websocket:
+            websocket.send_json({"type": "auth", "access_token": make_token(private_key)})
+            assert websocket.receive_json() == {"type": "ready"}
+            assert client.portal is not None
+            client.portal.call(app.state.hub.suspend)
+            with pytest.raises(WebSocketDisconnect) as disconnected:
+                websocket.receive_json()
+            assert disconnected.value.code == 1013
+        assert client.get("/health/ready").status_code == 503

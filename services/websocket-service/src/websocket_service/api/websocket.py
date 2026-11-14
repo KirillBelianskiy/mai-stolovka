@@ -1,5 +1,6 @@
 import asyncio
 import json
+from contextlib import suppress
 from datetime import UTC, datetime
 
 import jwt
@@ -18,7 +19,7 @@ async def _send_messages(
     try:
         while True:
             await websocket.send_json(await client_queue.get())
-    except (RuntimeError, WebSocketDisconnect):
+    except (OSError, RuntimeError, WebSocketDisconnect):
         return
 
 
@@ -32,16 +33,19 @@ async def kitchen_websocket(websocket: WebSocket) -> None:
 
     await websocket.accept()
     try:
-        auth_frame = await asyncio.wait_for(
-            websocket.receive_text(), timeout=settings.websocket_auth_timeout_seconds
+        frame = await asyncio.wait_for(
+            websocket.receive(), timeout=settings.websocket_auth_timeout_seconds
         )
     except TimeoutError:
         await websocket.close(code=4401)
         return
-    except WebSocketDisconnect:
+    if frame["type"] == "websocket.disconnect":
         return
-
-    if len(auth_frame.encode("utf-8")) > settings.websocket_max_frame_bytes:
+    auth_frame = frame.get("text")
+    if (
+        not isinstance(auth_frame, str)
+        or len(auth_frame.encode()) > settings.websocket_max_frame_bytes
+    ):
         await websocket.close(code=1008)
         return
     try:
@@ -52,6 +56,9 @@ async def kitchen_websocket(websocket: WebSocket) -> None:
         if not isinstance(token, str):
             raise ValueError("Missing access token")
         claims = websocket.app.state.token_verifier.verify(token)
+    except RecursionError:
+        await websocket.close(code=4401)
+        return
     except RuntimeError:
         await websocket.close(code=1013)
         return
@@ -62,6 +69,10 @@ async def kitchen_websocket(websocket: WebSocket) -> None:
     if claims.role not in {"COOK", "CASHIER", "ADMIN"}:
         await websocket.close(code=4403)
         return
+    remaining = claims.exp - datetime.now(UTC).timestamp()
+    if remaining <= 0:
+        await websocket.close(code=4401)
+        return
 
     hub: KitchenHub = websocket.app.state.hub
     try:
@@ -69,50 +80,30 @@ async def kitchen_websocket(websocket: WebSocket) -> None:
     except RuntimeError:
         await websocket.close(code=1013)
         return
+
     sender = asyncio.create_task(_send_messages(websocket, client.messages))
+    receiver = asyncio.create_task(websocket.receive())
+    overflow = asyncio.create_task(client.overflow.wait())
+    unavailable = asyncio.create_task(client.unavailable.wait())
+    shutdown = asyncio.create_task(client.shutdown.wait())
+    tasks = (sender, receiver, overflow, unavailable, shutdown)
     try:
-        while True:
-            remaining = claims.exp - datetime.now(UTC).timestamp()
-            if remaining <= 0:
-                await websocket.close(code=4401)
-                return
-            receiver = asyncio.create_task(websocket.receive_text())
-            overflow = asyncio.create_task(client.overflow.wait())
-            shutdown = asyncio.create_task(client.shutdown.wait())
-            try:
-                done, _ = await asyncio.wait(
-                    {receiver, overflow, shutdown, sender},
-                    timeout=remaining,
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-            finally:
-                for task in (receiver, overflow, shutdown):
-                    if not task.done():
-                        task.cancel()
-            if not done:
-                await websocket.close(code=4401)
-                return
-            if overflow in done and overflow.result():
-                await websocket.close(code=1013)
-                return
-            if sender in done:
-                return
-            if shutdown in done and shutdown.result():
-                await websocket.close(code=1012)
-                return
-            try:
-                frame = receiver.result()
-            except WebSocketDisconnect:
-                return
-            if len(frame.encode("utf-8")) > settings.websocket_max_frame_bytes:
-                await websocket.close(code=1008)
-                return
-            await websocket.close(code=1008)
-            return
+        done, _ = await asyncio.wait(tasks, timeout=remaining, return_when=asyncio.FIRST_COMPLETED)
+    except asyncio.CancelledError:
+        return
     finally:
         hub.disconnect(client_id)
-        sender.cancel()
-        try:
-            await sender
-        except asyncio.CancelledError:
-            pass
+        for task in tasks:
+            task.cancel()
+        with suppress(asyncio.CancelledError):
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    if not done:
+        await websocket.close(code=4401)
+    elif shutdown in done:
+        await websocket.close(code=1012)
+    elif overflow in done or unavailable in done:
+        await websocket.close(code=1013)
+    elif receiver.done() and not receiver.cancelled():
+        if receiver.result()["type"] != "websocket.disconnect":
+            await websocket.close(code=1008)
