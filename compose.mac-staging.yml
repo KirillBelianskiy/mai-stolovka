@@ -11,6 +11,39 @@ services:
   user-service:
     environment:
       APP_SESSION_COOKIE_ALLOWED_ORIGINS: ${STAGING_CUSTOMER_ORIGIN:?Set the staging customer origin}
+
+  notification-dispatch:
+    profiles: [dispatch-fake]
+    build: ./services/notification-service
+    command: ["/app/.venv/bin/python", "-m", "notification_service.dispatch"]
+    environment:
+      APP_DATABASE_URL: postgresql+asyncpg://notifications_owner:${NOTIFICATIONS_DB_PASSWORD:?Set staging database credentials}@postgres:5432/notifications_db
+      APP_DISPATCH_BOT_MODE: fake
+      APP_DISPATCH_FAKE_BOT_URL: http://fake-bot:8080
+      APP_DISPATCH_USER_URL: http://user-service:8000
+      APP_DISPATCH_SIGNING_KEY_BASE64: ${STAGING_DISPATCH_SIGNING_KEY_BASE64:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+      fake-bot:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-m", "notification_service.dispatch", "--check"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: "no"
+    stop_grace_period: 45s
+
+  fake-bot:
+    profiles: [dispatch-fake]
+    image: python:3.12.16-slim-bookworm
+    command: ["python", "-u", "/staging/fake_bot.py"]
+    volumes:
+      - ./infra/mac-staging/fake_bot.py:/staging/fake_bot.py:ro
+
   websocket-service:
     environment:
       APP_JWT_PUBLIC_KEY_BASE64: ${JWT_PUBLIC_KEY_BASE64:?Initialize staging JWT keys}
@@ -53,13 +86,13 @@ services:
   staging-ingress:
     image: caddy:2.10.2-alpine
     ports:
-      - "127.0.0.1:18280:8080"
-      - "127.0.0.1:18281:8081"
+      - "127.0.0.1:${STAGING_CUSTOMER_PORT:-18280}:8080"
+      - "127.0.0.1:${STAGING_KITCHEN_PORT:-18281}:8081"
     environment:
       STAGING_WEBHOOK_ENABLED: ${STAGING_WEBHOOK_ENABLED:-false}
     volumes:
       - ./infra/mac-staging/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./.private/mac-staging/artifacts:/srv:ro
+      - ${STAGING_ARTIFACTS_DIR:-./.private/mac-staging/artifacts}:/srv:ro
     healthcheck:
       test:
         - CMD-SHELL

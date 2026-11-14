@@ -46,7 +46,54 @@ print("http://localhost:18280/#" + urlencode({"tgWebAppData": identity(token)["i
 PY
 ```
 
-The script provisions `orders.events.v1` and starts Outbox and Notification Inbox. After the combined release includes Kitchen #24, set `STAGING_KITCHEN_KAFKA_ENABLED=true` and pass the combined commit SHA to `build`. Run a single WebSocket replica for group `kitchen-orders-v1`, with broker `kafka:29092` and topic `orders.events.v1`. The readiness endpoint returns 503 until partition assignment and on Kafka failure. Check service logs before restarting after a retention gap or malformed record. Keep Kafka offsets and data intact while diagnosing. Caddy preserves WebSocket upgrades and has no configured upstream stream timeout. The baseline Kitchen uses REST polling.
+The script provisions `orders.events.v1` and starts Outbox and Notification Inbox. The
+standalone #62 baseline uses Kitchen REST polling and keeps fake dispatch off.
+
+## Run the combined release locally
+
+Use a dedicated worktree containing the wiring change plus Kitchen [#63](https://github.com/KirillBelianskiy/mai-stolovka/pull/63)
+at `dd372a14a3676e221e7b7d2f5ef6fb44c5ddedc5` and Notification
+[#64](https://github.com/KirillBelianskiy/mai-stolovka/pull/64) at
+`e72ee6d4e2fc06774feaf18a253c821d1ef679e2`. Pin the combined revision before building.
+
+```sh
+export MAI_STAGING_INSTANCE=release
+python3 infra/mac-staging.py init
+python3 infra/mac-staging.py build FULL_COMBINED_COMMIT_SHA
+```
+
+The release instance uses `mai-food-mac-staging-release`, separate volumes and ignored files
+under `.private/mac-staging-release/`. It publishes customer at <http://localhost:18480/>
+and Kitchen at <http://localhost:18481/>, alongside the baseline on 18280/18281. Reserve one
+release instance per Mac. The baseline commands remain available with
+`MAI_STAGING_INSTANCE=baseline`.
+
+In `.private/mac-staging-release/staging.env`, set `STAGING_KITCHEN_KAFKA_ENABLED=true`
+to enable Kitchen hints, and `STAGING_DISPATCH_FAKE_ENABLED=true` to enable READY dispatch
+to the bundled fake Bot API. Leave `TELEGRAM_BOT_TOKEN` set to its generated synthetic value.
+Both features default to off, and the release initializer creates a dedicated Notification
+signing pair. User gets the matching public key. The worker receives the private key and uses
+the internal User origin with the services' default issuer, audience and key ID.
+
+```sh
+python3 infra/mac-staging.py up
+python3 infra/mac-staging.py status
+python3 infra/mac-staging/smoke.py
+node --test apps/kitchen-app/tests/realtime.test.mjs
+```
+
+Startup migrates Notification through `0002_ready_dispatch` on the combined checkout before
+starting one `python -m notification_service.dispatch` worker. The worker health check verifies
+configuration and migration readiness. The worker and fake API have no published ports. The
+fake API accepts synthetic send requests and logs an aggregate count without logging recipient
+IDs or message bodies. To disable it, clear the opt-in flag to `false` and rerun `up`, or run
+`down` to stop the release. Leave the migration and delivery history in place.
+
+Kitchen consumes `orders.events.v1` from `kafka:29092` as one replica in
+`kitchen-orders-v1`. Readiness returns 503 until partition assignment and on Kafka failure.
+Check logs before restarting after a retention gap or malformed record. Preserve Kafka offsets
+and data while diagnosing. Caddy preserves WebSocket upgrades and has no configured upstream
+stream timeout.
 
 ## Routes and operations
 

@@ -12,8 +12,10 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 ROOT = Path(__file__).resolve().parents[2]
-CUSTOMER = 18280
-KITCHEN = 18281
+spec = importlib.util.spec_from_file_location("staging", ROOT / "infra/mac-staging.py")
+staging = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(staging)
+CUSTOMER, KITCHEN = staging.CUSTOMER_PORT, staging.KITCHEN_PORT
 WEBHOOK = "/api/v1/users/internal/v1/telegram/webhook"
 WS = "/api/v1/ws/kitchen"
 CHECKS = 0
@@ -67,9 +69,6 @@ def check_customer(fields):
 
 def check_staff():
     # Create a synthetic account via the existing User provisioning function.
-    spec = importlib.util.spec_from_file_location("staging", ROOT / "infra/mac-staging.py")
-    staging = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(staging)
     account = {
         "username": "staging-smoke-" + secrets.token_hex(5),
         "password": secrets.token_urlsafe(24),
@@ -110,7 +109,7 @@ asyncio.run(provision_staff(
 def main():
     fields = dict(
         line.split("=", 1)
-        for line in (ROOT / ".private/mac-staging/staging.env").read_text().splitlines()
+        for line in staging.ENV_FILE.read_text().splitlines()
         if line and not line.startswith("#") and "=" in line
     )
     if not fields["TELEGRAM_BOT_TOKEN"].startswith("local-staging:"):
