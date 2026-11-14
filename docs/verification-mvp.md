@@ -1,9 +1,51 @@
 # MVP acceptance — issue #27
 
-Status on 2026-11-05: **preparation and anonymous local route preflight only**.
-No integrated release candidate or A1–A8 journey is accepted by this document. #18 Telegram
-dispatch, #24 Kafka/WebSocket reconciliation and #25 actual hosting remain dependencies.
-Unmerged implementation PRs are review inputs, not deployed or accepted features.
+Status on 2026-11-14: **Mac MVP acceptance preparation**. The local release harness exercises
+the synthetic HTTP journey against the pinned application baseline. Integrated A1–A8 acceptance
+awaits the reviewed candidate, staging handoff and controlled Telegram access.
+
+## Run the local release acceptance entry point
+
+From a clean candidate checkout with Python 3.12, OpenSSL and local Docker Compose:
+
+```sh
+python3 tests/e2e/mvp_acceptance.py --output /tmp/mai-accept-new-run.json
+python3 -m unittest discover -s tests/e2e -v
+```
+
+Use a new report path outside the checkout. The entry point builds images from the checkout,
+uses a UUID-named Compose project and fresh databases, generates signing keys and synthetic
+identities, binds customer/staff HTTP to distinct loopback ports, runs preflight and the API
+journey, and removes its project containers and volumes. It uses the local Docker context, a
+private temporary environment and a generated synthetic Telegram signing key. The existing
+workers and Telegram dispatch are outside this local exercise. Reports include sanitized
+failures, application revision, running image IDs, migration heads, and observed synthetic
+ledger, Outbox, status and slot state. A pass requires successful teardown. Built images may
+remain in Docker's cache.
+
+The API run exercises User login, ADMIN credit and fixtures, concurrent same-key checkout,
+concurrent same-version cancellation, wrong-owner and role denial, and the COOK-to-CASHIER
+handoff through the two proxy origins. The committed observations cover exactly-once local state and current order detail over REST. The full candidate gates below also require real browser/UI,
+Telegram, staff network and worker/operations evidence.
+
+See [release checklist](mvp/release-checklist.md) and [pilot evidence](mvp/pilot-results.md).
+
+## Verified baseline results (2026-11-14)
+
+Application base: `585f6147dc2c6fca6301d6e6339afd10f4991944` (`codex/ui-completeness`).
+The [local report](acceptance/mac-local-2026-11-14.json) was generated at
+`c1865e6ccfddc697b872996326c30e8dce803455` with Python 3.12.8, Docker 29.1.2 and Compose
+2.40.3-desktop.1. The evidence-only descendant adds this report and its interpretation.
+
+| Command or check | Observed result |
+| --- | --- |
+| `python3 tests/e2e/mvp_acceptance.py --output /tmp/mai-accept-c1865e6.json` | 11 stages passed, including 22 anonymous route checks and 52 authenticated or login requests. Both apps and all API images built. Four database migrations reached their recorded heads. |
+| Concurrent checkout and cancellation | Two same-key checkout responses shared one order, original/replay flags and one 12,000-kopeck debit. Concurrent cancellation left one refund, one cancellation event, 50,000 kopecks and zero capacity used. After cancellation, replay returned the original response and GET returned CANCELLED v2. |
+| Repricing and staff flow | Old total rejected, history retained 12,000 kopecks, then explicit 15,000-kopeck confirmation created the second order. COOK prepared and marked it READY. CASHIER completed it at version 4. Wrong roles, stale versions, terminal cancellation and full capacity were denied. Final wallet: 35,000 kopecks, one capacity unit used. |
+| `python3 -m unittest discover -s tests/e2e -v` and `python3 -m unittest discover -s tests/contracts -q` | 2 harness regressions and 27 contract tests passed. Initial harness red was the missing module. |
+| Order `python -m pytest -p no:cacheprovider tests/test_order_integration.py tests/test_wallet_integration.py -q --tb=no` and `python -m alembic check` | 39 passed and no schema drift on a temporary UTF-8 PostgreSQL 18.6 database, using existing dependencies and the pinned Order source. Covers slot cutoff, forced debit/refund/credit rollback, concurrent wallet operations and refund after disabling payments. The first run used a SQL_ASCII database and returned 24 failures; the corrected UTF-8 run passed. Existing Starlette/httpx deprecation warning. |
+| `ruff check tests/e2e`, `ruff format --check tests/e2e`, `git diff --check` | Passed. |
+| Docker cleanup | Verified no containers, volumes or networks with the completed acceptance project's label. |
 
 ## Reproduce the completed preflight
 
@@ -34,7 +76,7 @@ The supplied source revision is an operator annotation, **not a verified deploym
 the full run, record actual candidate commit, container image IDs/digests, application/DB migration
 versions and proxy configuration independently. Never infer running code identity from HTTP 200.
 
-## Current source inputs and observed result
+## Historical anonymous preflight evidence (2026-11-05)
 
 The local-only integration `87cf9e5989d248cae44aacdfedf708c820cb8411` includes these inputs:
 
@@ -81,8 +123,8 @@ disposable environment through its approved lifecycle, never the user's existing
 
 ## A1–A8 acceptance matrix
 
-All rows below are **NOT RUN** in this delivery. Existing service/component test results can be
-linked as supporting evidence but cannot replace the observations listed here.
+Full candidate execution of each row remains **NOT RUN**. Attach local API and service evidence
+to the relevant rows when completing the remaining observations on the pinned candidate.
 
 | ID | Reproducible actions | Required observations and evidence | Dependencies |
 | --- | --- | --- | --- |
@@ -102,8 +144,24 @@ well as pointer: slot selection, balance refresh, explicit repricing, retry, can
 and profile/account change. Inspect focus, labels, scrolling, wrapping and touch targets. A DOM test
 or an HTTP response is not proof of layout or real Telegram behavior.
 
-Use the severity rules in `docs/mvp/scope.md`. A failed check records scenario, exact head/fixture,
+Apply the severity rules recorded in #14 or its reviewed scope handoff. A failed check records scenario, exact head/fixture,
 steps, expected/actual, severity and owning issue. Stop an affected financial/security exercise for
 duplicate/missing debit/refund, negative balance, cross-account access or corrupt capacity. Fixes
 belong to the owning service/app branch. Retest on a newly pinned candidate; do not overwrite the
 original failing evidence or close #27 while any required journey remains unobserved.
+
+## Final Mac candidate gates
+
+Pin the combined source SHA and the exact User, Kitchen, Notification and Mac Infra handoff heads
+in the [release manifest](mvp/release-checklist.md). Run the local entry point on that checkout
+and attach the new report. Use the candidate's approved staging routes and isolated fixture
+record for the checks below. Each gate requires timestamp, observed result and evidence link.
+
+| Gate | Procedure and pass criteria | Start dependency |
+| --- | --- | --- |
+| Real Telegram and User | After the coordinator supplies the approved candidate and separate test bot/account, launch from the real Telegram client over approved staging HTTPS. Sign in, close/reopen, exercise refresh and account isolation (A1/A4). Confirm secure session behavior and reject stale or invalid launch data using dedicated fixtures. Observe no credential values in artifacts. | User handoff and staging access from coordinator |
+| READY and Telegram | Create separate eligible and ineligible synthetic recipients. Make orders READY as COOK, verify one durable obligation per event and recipient as specified, actual receipt and working ticket link for the eligible account, suppression for ineligible recipient and approved handling for blocked/revoked account. Correlate order/version, event ID, Kafka position and redacted dispatch outcome. CASHIER completes once. | Notification and User handoffs, approved test bot/account |
+| Kafka, workers and WebSocket recovery | With the disposable broker/worker procedures, interrupt Kafka and each consuming/publishing worker with a pending synthetic order. Create or progress another order while hints are disconnected. Restore in the documented order. Compare Outbox publication, acknowledged offsets and durable inbox/retry state. Replay duplicate, delayed and terminal-before-READY events using the reviewed fixture procedure. Verify no skipped obligations, no resurrected terminal work and ambiguity handled under the approved send policy. Verify staff reconnect and REST reconciliation recover current order/version after lost, duplicate and delayed hints, and reject unauthenticated/client-role WebSocket connections. | Kitchen, Notification and Mac Infra handoffs |
+| Remote staff and network switch | Use a real staff browser on the approved remote HTTPS origin from a device outside the Mac LAN. Check TLS, role-scoped access, REST and authenticated WSS. Start a COOK queue session on Wi-Fi, switch to mobile data while another operator changes a test order, then switch back. Repeat through CASHIER issuance. Record disconnection/recovery times, authentication and observed latest version, one issuance, and no stale queue revival. Verify unauthorized and expired sessions follow the documented denial or re-authentication path. | Kitchen and Mac Infra handoffs, remote test device/network |
+| Restore and cutover rollback | Use the Mac Infra rehearsal and [release checklist](mvp/release-checklist.md). Verify a fresh restore and measured RPO/RTO, synthetic order/key/wallet/slot/Outbox/inbox/offset recovery, alerts and staff access. Rehearse candidate cutover and rollback to pinned prior artifacts, verify routing and re-run state/role invariants after rollback. Record approvals and evidence for the actual selected schema recovery route. | Mac Infra handoff and approved operational thresholds |
+| Pilot and sign-off | Finish A1–A8 with pass/fail and linked evidence, record any blocker and retest at its exact candidate, and obtain approval under #29 before rollout. After authorized rollout, complete the #30 [pilot record](mvp/pilot-results.md). | Coordinator, operators and approved pilot cohort |
