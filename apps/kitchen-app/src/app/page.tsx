@@ -38,6 +38,7 @@ import {
   type StaffSession,
   type UserProfile,
 } from "../lib/kitchen";
+import { createQueueRefresh, startKitchenRealtime } from "../lib/realtime";
 
 const SESSION_KEY = "mai-food-kitchen-session";
 const STATUS_LABELS: Record<OrderStatus, string> = {
@@ -177,7 +178,7 @@ function LoginPanel({
 
 export default function Home() {
   const activeToken = useRef<string | null>(null);
-  const queueRequest = useRef(0);
+  const queueRefresh = useRef<ReturnType<typeof createQueueRefresh> | null>(null);
   const mutation = useRef<symbol | null>(null);
   const [cancelCandidate, setCancelCandidate] = useState<Order | null>(null);
   const [session, setSession] = useState<StaffSession | null>(null);
@@ -196,7 +197,8 @@ export default function Home() {
 
   const signOut = useCallback((reason = "") => {
     activeToken.current = null;
-    queueRequest.current += 1;
+    queueRefresh.current?.stop();
+    setLoading(false);
     mutation.current = null;
     sessionStorage.removeItem(SESSION_KEY);
     setSession(null);
@@ -215,13 +217,12 @@ export default function Home() {
     }
   }, [signOut, session?.token]);
 
-  const loadQueue = useCallback(
-    async (activeSession: StaffSession, quiet = false) => {
-      if (activeToken.current !== activeSession.token) return;
-      const requestId = ++queueRequest.current;
+  const fetchQueue = useCallback(
+    async (activeSession: StaffSession, quiet: boolean, signal: AbortSignal) => {
       const isCurrent = () =>
         activeToken.current === activeSession.token &&
-        queueRequest.current === requestId;
+        !signal.aborted;
+      if (!isCurrent()) return;
       if (!quiet) setLoading(true);
       setError("");
       try {
@@ -232,6 +233,7 @@ export default function Home() {
         const result = await apiRequest<OrderPage>(
           `/orders/?${params.toString()}`,
           activeSession.token,
+          { signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]) },
         );
         if (!isCurrent()) return;
         setOrders(result.items);
@@ -309,18 +311,28 @@ export default function Home() {
 
   useEffect(() => {
     if (!session) return;
-    void loadQueue(session);
-    const timer = window.setInterval(
-      () => void loadQueue(session, true),
-      15_000,
-    );
-    const onFocus = () => void loadQueue(session, true);
-    window.addEventListener("focus", onFocus);
+    const lifetime = new AbortController();
+    const refresh = createQueueRefresh((quiet) => fetchQueue(session, quiet, lifetime.signal));
+    queueRefresh.current = refresh;
+    const stopRealtime = startKitchenRealtime({
+      token: session.token,
+      refresh: (quiet) => void refresh.request(quiet),
+      onUnauthorized: (code) => {
+        if (activeToken.current !== session.token) return;
+        signOut(
+          code === 4403
+            ? "Эта учётная запись больше не имеет доступа к рабочему месту."
+            : "Срок входа истёк. Войдите снова, чтобы продолжить работу.",
+        );
+      },
+    });
     return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("focus", onFocus);
+      stopRealtime();
+      refresh.stop();
+      lifetime.abort();
+      queueRefresh.current = null;
     };
-  }, [session, loadQueue]);
+  }, [session, fetchQueue, signOut]);
 
   const grouped = useMemo(
     () => ({
@@ -348,13 +360,13 @@ export default function Home() {
       setNotice(
         `${order.order_number}: ${STATUS_LABELS[status].toLowerCase()}.`,
       );
-      await loadQueue(session, true);
+      await queueRefresh.current?.request(true);
     } catch (caught) {
       if (!isCurrent()) return;
       if (caught instanceof ApiError && caught.status === 401) {
         signOut("Срок входа истёк. Войдите снова, чтобы продолжить работу.");
       } else if (caught instanceof ApiError && caught.status === 409) {
-        await loadQueue(session, true);
+        await queueRefresh.current?.request(true);
         if (!isCurrent()) return;
         setNotice(
           "Заказ уже изменился. Очередь обновлена — проверьте текущий статус и повторите действие.",
@@ -384,13 +396,13 @@ export default function Home() {
       });
       if (!isCurrent()) return;
       setNotice(`${order.order_number} отменён.`);
-      await loadQueue(session, true);
+      await queueRefresh.current?.request(true);
     } catch (caught) {
       if (!isCurrent()) return;
       if (caught instanceof ApiError && caught.status === 401) {
         signOut("Срок входа истёк. Войдите снова, чтобы продолжить работу.");
       } else if (caught instanceof ApiError && caught.status === 409) {
-        await loadQueue(session, true);
+        await queueRefresh.current?.request(true);
         if (!isCurrent()) return;
         setNotice(
           "Статус заказа изменился. Очередь обновлена — проверьте заказ перед повтором.",
@@ -406,7 +418,6 @@ export default function Home() {
 
   function login(newSession: StaffSession) {
     activeToken.current = newSession.token;
-    queueRequest.current += 1;
     setActiveView("queue");
     setError("");
     setNotice("");
@@ -528,7 +539,7 @@ export default function Home() {
             <button
               className="text-button"
               disabled={loading}
-              onClick={() => void loadQueue(session)}
+              onClick={() => void queueRefresh.current?.request()}
               aria-label="Обновить очередь"
             >
               <RefreshCw size={16} className={loading ? "spin" : ""} />
@@ -548,7 +559,7 @@ export default function Home() {
                 <span>{error}</span>
                 <button
                   className="text-button"
-                  onClick={() => void loadQueue(session)}
+                  onClick={() => void queueRefresh.current?.request()}
                 >
                   Повторить
                 </button>
