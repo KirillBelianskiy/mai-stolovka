@@ -1,0 +1,175 @@
+{
+	admin off
+	auto_https off
+}
+
+(clean_request) {
+	request_header -Forwarded
+	request_header -X-Forwarded-*
+	request_header -X-Real-IP
+	request_header -X-Original-*
+	request_header -X-Rewrite-*
+	request_header -X-MAI-*
+	request_header -CF-*
+	request_header -True-Client-IP
+	request_header -X-Client-IP
+	request_header -X-Pangolin-*
+	request_header -X-Tailscale-*
+}
+
+(clean_upstream) {
+	header_up -X-Forwarded-*
+	header_up -Forwarded
+}
+
+(customer_guard) {
+	forward_auth customer-role:8000 {
+		uri /client
+		import clean_upstream
+	}
+}
+
+(static) {
+	@static method GET HEAD
+	handle @static {
+		root * /srv/current/{args[0]}
+		file_server
+	}
+	respond 404
+}
+
+:8080 {
+	route {
+		import clean_request
+		request_body {
+			max_size 128KB
+		}
+		header Cache-Control "no-store"
+
+		# Compare the original request URI to keep API matching independent of normalization.
+		@noncanonical expression `path_regexp('(?i)^/api(/|$)') && {http.request.orig_uri}.matches('^[^?]*(%|//|/[.]{1,2}(/|[?]|$))')`
+		respond @noncanonical 404
+
+		@menu {
+			method GET
+			path_regexp ^/api/v1/menu/(categories|items(/[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})?)$
+		}
+		handle @menu {
+			uri strip_prefix /api/v1/menu
+			reverse_proxy menu-service:8000 {
+				import clean_upstream
+			}
+		}
+
+		@session {
+			method POST
+			path_regexp ^/api/v1/users/auth/(telegram|session|logout)$
+		}
+		handle @session {
+			uri strip_prefix /api/v1/users
+			reverse_proxy user-service:8000 {
+				import clean_upstream
+				header_up -Authorization
+			}
+		}
+
+		@profile {
+			method GET PATCH
+			path_regexp ^/api/v1/users/me$
+		}
+		handle @profile {
+			import customer_guard
+			uri strip_prefix /api/v1/users
+			reverse_proxy user-service:8000 {
+				import clean_upstream
+				header_up X-MAI-Public-API 1
+			}
+		}
+
+		@slots {
+			method GET
+			path_regexp ^/api/v1/orders/slots$
+		}
+		handle @slots {
+			uri strip_prefix /api/v1/orders
+			reverse_proxy order-service:8000 {
+				import clean_upstream
+			}
+		}
+
+		@orders expression `({method} == 'GET' && path_regexp('^/api/v1/orders/($|wallet$|[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$)')) || ({method} == 'POST' && path_regexp('^/api/v1/orders/($|[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}/cancel$)'))`
+		handle @orders {
+			import customer_guard
+			uri strip_prefix /api/v1/orders
+			reverse_proxy order-service:8000 {
+				import clean_upstream
+				header_up X-MAI-Public-API 1
+			}
+		}
+
+		@webhook expression `'{$STAGING_WEBHOOK_ENABLED:false}' == 'true' && {method} == 'POST' && ({http.request.orig_uri} == '/api/v1/users/internal/v1/telegram/webhook')`
+		handle @webhook {
+			uri strip_prefix /api/v1/users
+			reverse_proxy user-service:8000 {
+				import clean_upstream
+				header_up -Authorization
+				header_up -Cookie
+			}
+		}
+
+		@service path /api /api/* /health /health/*
+		respond @service 404
+		import static telegram-mini-app
+	}
+}
+
+:8081 {
+	route {
+		import clean_request
+		request_body {
+			max_size 128KB
+		}
+		header Cache-Control "no-store"
+
+		@user path /api/v1/users/auth/staff /api/v1/users/me
+		handle @user {
+			uri strip_prefix /api/v1/users
+			reverse_proxy user-service:8000 {
+				import clean_upstream
+			}
+		}
+
+		handle_path /api/v1/menu/* {
+			@menu path /categories /categories/* /items /items/* /admin/items
+			route {
+				reverse_proxy @menu menu-service:8000 {
+					import clean_upstream
+				}
+				respond 404
+			}
+		}
+
+		handle_path /api/v1/orders/* {
+			@orders path / /slots /slots/* /wallet/credits
+			@detail path_regexp ^/[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}(/(status|cancel))?$
+			route {
+				reverse_proxy @orders order-service:8000 {
+					import clean_upstream
+				}
+				reverse_proxy @detail order-service:8000 {
+					import clean_upstream
+				}
+				respond 404
+			}
+		}
+
+		@websocket path /api/v1/ws/kitchen
+		reverse_proxy @websocket websocket-service:8000 {
+			import clean_upstream
+		}
+
+		@service path /api /api/* /health /health/*
+		respond @service 404
+		import static kitchen-app
+	}
+}
