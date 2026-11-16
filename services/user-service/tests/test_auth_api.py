@@ -18,7 +18,11 @@ def test_staff_login_validates_request() -> None:
 
 def test_unconfigured_authentication_fails_closed() -> None:
     with TestClient(create_app(Settings(database_url=None))) as client:
-        response = client.post("/auth/telegram", json={"init_data": "auth_date=1&hash=invalid"})
+        response = client.post(
+            "/auth/telegram",
+            json={"init_data": "auth_date=1&hash=invalid"},
+            headers={"Origin": "http://localhost:8080"},
+        )
         assert response.status_code == 503
         assert "token" not in response.text.lower()
 
@@ -26,6 +30,21 @@ def test_unconfigured_authentication_fails_closed() -> None:
 def test_staff_registration_is_not_public() -> None:
     with TestClient(create_app(Settings(database_url=None))) as client:
         assert client.post("/auth/register", json={}).status_code == 404
+
+
+def test_mini_app_cookie_endpoints_require_allowlisted_origin() -> None:
+    with TestClient(create_app(Settings(database_url=None))) as client:
+        assert client.post("/auth/session").status_code == 403
+        assert (
+            client.post(
+                "/auth/session", headers={"Origin": "https://untrusted.example"}
+            ).status_code
+            == 403
+        )
+        assert (
+            client.post("/auth/logout", headers={"Origin": "https://untrusted.example"}).status_code
+            == 403
+        )
 
 
 def test_unreachable_database_fails_closed(auth_keys: tuple[bytes, bytes]) -> None:

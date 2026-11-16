@@ -131,7 +131,14 @@ class StackSmokeTests(unittest.TestCase):
 
     def test_alembic_expected_schema(self) -> None:
         expected = {
-            "users": {"users", "staff_credentials"},
+            "users": {
+                "users",
+                "staff_credentials",
+                "user_sessions",
+                "telegram_recipient_permissions",
+                "telegram_update_receipts",
+                "recipient_block_reports",
+            },
             "menu": {"categories", "menu_items"},
             "notifications": {
                 "source_checkpoints",
@@ -140,6 +147,9 @@ class StackSmokeTests(unittest.TestCase):
                 "order_observations",
                 "observed_versions",
                 "ready_obligations",
+                "ready_dispatches",
+                "delivery_attempts",
+                "dispatch_bot",
             },
             "orders": {
                 "time_slots",

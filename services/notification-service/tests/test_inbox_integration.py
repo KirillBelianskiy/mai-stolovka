@@ -32,6 +32,9 @@ def run_test(test, group_id="test-group"):
                         "observed_versions, order_observations, source_checkpoints CASCADE"
                     )
                 )
+                await db.execute(
+                    text("UPDATE dispatch_bot SET paused = false, cooldown_until = NULL")
+                )
             await store.initialize("test-topic", 0, 0, 100, None)
             await test(store)
         finally:

@@ -43,7 +43,7 @@ added. OIDC remains a possible future migration, but is not the selected Stage 2
 The contract requires `sub` (user UUID), `role`, `jti` (UUID), `iat`, `nbf`, `exp`, `iss`, `aud`,
 and `token_use=access`, with configured `kid`. Verification pins RS256, issuer, audience, key ID,
 claim formats, and expiry. Default issuer/audience are `mai-food-users` / `mai-food-api`;
-default lifetime is 900 seconds, configurable between 60 and 3600 seconds. Keys below 2048 bits
+default lifetime is 900 seconds, configurable between 60 and 900 seconds. Keys below 2048 bits
 or mismatched signing/verification pairs are rejected at startup. The local helper generates
 3072-bit keys. Unknown keys/algorithms and malformed or expired tokens fail closed.
 
@@ -53,6 +53,31 @@ Service checks current user existence and role for `/me`. Menu Service verifies 
 offline and cannot observe a deleted user or changed role until token expiry. Immediate revocation,
 multi-key/JWKS rotation, device sessions, and staff lifecycle controls require a follow-up design.
 Do not describe this implementation as complete production identity management.
+
+## Mini App browser sessions
+
+Telegram client login still validates the original fresh `initData`. On success, User Service also
+creates a 32-byte random browser-session credential and stores only its SHA-256 digest in
+`user_sessions`. The response retains the existing access-token/profile body and sets `mai_session`
+as Secure, HttpOnly, host-only, SameSite=Strict, with path `/api/v1/users/auth`. There is no
+cross-origin credential sharing. Set `APP_SESSION_COOKIE_ALLOWED_ORIGINS` to a comma-separated
+list of exact Mini App origins; login, restore, and logout reject missing or unlisted Origin values.
+
+`POST /api/v1/users/auth/session` verifies the cookie and current CLIENT profile, extends the idle
+deadline by 30 days (capped by the 90-day absolute expiry), and returns a fresh access JWT. The
+cookie value remains stable. `POST /api/v1/users/auth/logout` revokes only the presented browser
+session and clears the cookie; repeating logout is safe. Logging into Telegram from the same browser
+revokes its previously presented session before issuing a new one. Other browsers/devices are not
+affected. An already-issued service JWT remains valid until expiry; the configured access-token TTL
+is limited to 15 minutes.
+The Mini App must verify the cookie-backed session before showing a remembered identity; missing,
+blocked, revoked, or expired cookies require fresh Telegram authentication.
+
+For browser regression, verify reopen/restore, cleared-cookie fallback, blocked-cookie fallback,
+logout/replay rejection, and cookie flags in each supported browser engine. Run Secure-cookie checks
+over local HTTPS: browser treatment of Secure cookies on localhost varies, and Safari/WebKit has a
+documented exception. Browser-engine coverage must be recorded by the Mini App integration owner;
+service integration tests alone do not establish browser compatibility.
 
 Local private/public key values are base64 PEM in the ignored mode-0600 `.env`. Only User Service
 receives the private key and bot token. Menu receives only the public key. Base64 is transport

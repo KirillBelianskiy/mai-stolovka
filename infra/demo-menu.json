@@ -1,0 +1,44 @@
+[
+  {
+    "category": "Супы",
+    "name": "Борщ со сметаной",
+    "price": 14500,
+    "description": "Свёкла, говядина, капуста и сметана",
+    "image": "borscht.jpg"
+  },
+  {
+    "category": "Горячее",
+    "name": "Куриная котлета с пюре",
+    "price": 23500,
+    "description": "Куриная котлета, картофельное пюре",
+    "image": "chicken-cutlet.jpg"
+  },
+  {
+    "category": "Салаты",
+    "name": "Овощной салат",
+    "price": 9500,
+    "description": "Огурцы, томаты, зелень",
+    "image": "vegetable-salad.jpg"
+  },
+  {
+    "category": "Напитки",
+    "name": "Морс ягодный",
+    "price": 6500,
+    "description": "Домашний морс, 250 мл",
+    "image": "berry-mors.jpg"
+  },
+  {
+    "category": "Выпечка",
+    "name": "Сырники со сметаной",
+    "price": 16500,
+    "description": "Творожные сырники, две штуки",
+    "image": "syrniki.jpg"
+  },
+  {
+    "category": "Горячее",
+    "name": "Гречка с курицей",
+    "price": 22000,
+    "description": "Гречневая крупа и запечённое куриное филе",
+    "image": "buckwheat.jpg"
+  }
+]

@@ -72,8 +72,31 @@ updated Stage 2 authorization in review PR #1; its generic generator is unchange
 The user subsequently requested autonomous task closure; all three implementation issues were
 transitioned to Done after the acceptance checks passed. The separate skill PR remains open for review.
 
-Product changes remain local and uncommitted, with no product remote or push, as requested.
-No GitHub Actions run or production deployment is claimed.
+At that Stage 2 closeout, product changes were local and uncommitted, with no product push.
+No GitHub Actions run or production deployment was claimed for that closeout.
+
+## Persistent Mini App sessions (SCRUM-40)
+
+Implementation is on branch `SCRUM-40-persistent-user-sessions`, based on `main`. The change adds
+User-owned session persistence, cookie-backed restore/logout endpoints, the User OpenAPI snapshot,
+and migration/API integration cases for expiry, replay, account switching, parallel restore, and
+restart restoration.
+
+| Check | Result |
+| --- | --- |
+| Python 3.12.12 and `uv sync --frozen` for User Service | Passed; isolated `.venv` created |
+| User Ruff check, format check, and strict Mypy | Passed |
+| User `pytest -q` | 44 passed, 9 PostgreSQL tests skipped without an integration URL |
+| Disposable User PostgreSQL integration | 9 passed, including session lifecycle/concurrency; temporary database dropped |
+| Alembic upgrade and `alembic check` | Passed; no model drift |
+| OpenAPI snapshot test under locked dependencies | Passed |
+| Chromium over local HTTPS | Passed: cookie flags, login/restore, actual service restart, untrusted Origin, cleared and blocked cookies, account switch, logout and replay |
+| `git diff --check` | Passed |
+
+The browser regression used a temporary HTTPS proxy and test page against the real User Service and
+a disposable PostgreSQL database; no Mini App source was changed. One Starlette warning remains:
+`httpx` support in `starlette.testclient` is deprecated in favor of `httpx2`. Local test credentials
+are generated in the ignored `.env`; no secrets or generated test harness were committed.
 
 ## Practical limits
 

@@ -1,0 +1,122 @@
+x-production: &production
+  restart: unless-stopped
+  logging:
+    driver: local
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  postgres:
+    <<: *production
+    ports: !reset []
+    command: [postgres, -c, shared_buffers=128MB]
+  kafka:
+    <<: *production
+    ports: !reset []
+    environment:
+      KAFKA_LISTENERS: INTERNAL://:29092,CONTROLLER://:29093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
+      KAFKA_LOG_RETENTION_BYTES: "1073741824"
+  user-service:
+    <<: *production
+    environment:
+      APP_SESSION_COOKIE_ALLOWED_ORIGINS: https://maistolovka.me
+  menu-service:
+    <<: *production
+  order-service:
+    <<: *production
+  notification-service:
+    <<: *production
+  websocket-service:
+    <<: *production
+    environment:
+      APP_JWT_PUBLIC_KEY_BASE64: ${JWT_PUBLIC_KEY_BASE64:?Configure the production JWT pair}
+      APP_ALLOWED_ORIGINS: https://kitchen.maistolovka.me
+      APP_KITCHEN_KAFKA_ENABLED: "true"
+      APP_KITCHEN_KAFKA_TOPIC: orders.events.v1
+      APP_KITCHEN_KAFKA_GROUP: kitchen-orders-v1
+  telegram-mini-app:
+    <<: *production
+  kitchen-app:
+    <<: *production
+  proxy:
+    <<: *production
+    ports: !reset []
+  outbox-worker:
+    <<: *production
+  notification-inbox:
+    <<: *production
+  notification-dispatch:
+    <<: *production
+    profiles: [telegram]
+    build: ./services/notification-service
+    command: ["/app/.venv/bin/python", "-m", "notification_service.dispatch"]
+    environment:
+      APP_DATABASE_URL: postgresql+asyncpg://notifications_owner:${NOTIFICATIONS_DB_PASSWORD}@postgres:5432/notifications_db
+      APP_DISPATCH_BOT_MODE: telegram
+      APP_DISPATCH_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      APP_DISPATCH_USER_URL: http://user-service:8000
+      APP_DISPATCH_SIGNING_KEY_BASE64: ${NOTIFICATION_SIGNING_KEY_BASE64:-}
+    depends_on:
+      user-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-m", "notification_service.dispatch", "--check"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    stop_grace_period: 45s
+  customer-role:
+    <<: *production
+    build: ./services/user-service
+    command: ["/app/.venv/bin/uvicorn", "customer_role:create_app", "--factory", "--app-dir", "/staging", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers", "--no-access-log"]
+    environment:
+      APP_JWT_PUBLIC_KEY_BASE64: ${JWT_PUBLIC_KEY_BASE64:?Configure the production JWT pair}
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - ./infra/mac-staging/customer_role.py:/staging/customer_role.py:ro
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-c", "import http.client; c = http.client.HTTPConnection('127.0.0.1', 8000, timeout=3); c.request('GET', '/client'); assert c.getresponse().status == 401"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  edge:
+    <<: *production
+    image: caddy:2.10.2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PROD_KITCHEN_CIDRS: ${PROD_KITCHEN_CIDRS:?Set approved Kitchen source CIDRs}
+      PROD_WEBHOOK_ENABLED: ${PROD_WEBHOOK_ENABLED:-false}
+    volumes:
+      - ./infra/production/Caddyfile:/etc/caddy/Caddyfile:ro
+      - tls-data:/data
+      - tls-config:/config
+    depends_on:
+      proxy:
+        condition: service_healthy
+      customer-role:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8082/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
+    external: true
+    name: ${PROD_PG_VOLUME:-mai-food-prod-postgres}
+  kafka-data:
+    external: true
+    name: ${PROD_KAFKA_VOLUME:-mai-food-prod-kafka}
+  tls-data:
+    external: true
+    name: ${PROD_TLS_VOLUME:-mai-food-prod-tls}
+  tls-config:
+    external: true
+    name: ${PROD_TLS_CONFIG_VOLUME:-mai-food-prod-tls-config}

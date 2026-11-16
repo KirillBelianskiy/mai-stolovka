@@ -34,6 +34,28 @@ def test_valid_unicode_identity_and_large_telegram_id() -> None:
     assert identity.username == "ivan"
 
 
+def test_verified_init_data_exposes_only_signed_permission_evidence() -> None:
+    values = {
+        **fields(),
+        "user": json.dumps({"id": 42, "first_name": "A", "allows_write_to_pm": True}),
+    }
+    identity = validate_init_data(signed(values), TEST_BOT_TOKEN, now=NOW)
+    assert identity.auth_date == NOW
+    assert identity.allows_write_to_pm is True
+
+    absent = validate_init_data(signed(fields()), TEST_BOT_TOKEN, now=NOW)
+    assert absent.allows_write_to_pm is None
+
+
+def test_permission_evidence_must_be_boolean() -> None:
+    values = {
+        **fields(),
+        "user": json.dumps({"id": 42, "first_name": "A", "allows_write_to_pm": "true"}),
+    }
+    with pytest.raises(InvalidInitData):
+        validate_init_data(signed(values), TEST_BOT_TOKEN, now=NOW)
+
+
 def test_signed_optional_signature_field_is_included_in_hmac() -> None:
     values = {**fields(), "signature": "illustrative-third-party-signature"}
     assert validate_init_data(signed(values), TEST_BOT_TOKEN, now=NOW).telegram_id > 0

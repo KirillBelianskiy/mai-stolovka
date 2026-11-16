@@ -59,6 +59,9 @@ def validate_init_data(
         first = user.get("first_name")
         last = user.get("last_name", "")
         username = user.get("username")
+        allows_write_to_pm = user.get("allows_write_to_pm")
+        if allows_write_to_pm is not None and type(allows_write_to_pm) is not bool:
+            raise InvalidInitData()
         if not isinstance(first, str) or not first.strip() or not isinstance(last, str):
             raise InvalidInitData()
         if username is not None and (not isinstance(username, str) or len(username) > 64):
@@ -66,6 +69,6 @@ def validate_init_data(
         full_name = " ".join(part.strip() for part in (first, last) if part.strip())
         if len(full_name) > 256:
             raise InvalidInitData()
-        return TelegramIdentity(telegram_id, username, full_name)
+        return TelegramIdentity(telegram_id, username, full_name, auth_date, allows_write_to_pm)
     except (ValueError, KeyError, TypeError, UnicodeError) as error:
         raise InvalidInitData("Invalid Telegram authentication data") from error

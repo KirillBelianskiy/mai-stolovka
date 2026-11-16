@@ -42,6 +42,10 @@ The root npm workspace has one lockfile. Container image tags are explicit relea
 
 ## Run the local stack
 
+For a pre-populated, isolated demonstration with synthetic Telegram sign-in, six photographed
+dishes and staff accounts, follow the [UI demo launch guide](docs/stages/stage-5-ui-completeness.md#reproduce).
+It uses ports 8180/8181 and a dedicated Compose project. The lower-level setup below uses 8080/8081.
+
 From the repository root:
 
 ```sh
@@ -96,6 +100,8 @@ PostgreSQL; the explicit opt-in Outbox worker can publish them after topic provi
 [development topic tool](docs/stages/stage-4-topic-operations.md) plans explicit provisioning
 and checks existing settings; SCRUM-18 consumer integration remains incomplete. Telegram access
 will require an HTTPS-accessible deployment and bot interaction permissions in a later stage.
+
+For the isolated Mac deployment workstream, see [Mac staging](docs/deployment/mac-staging.md).
 
 ## Backend development and checks
 

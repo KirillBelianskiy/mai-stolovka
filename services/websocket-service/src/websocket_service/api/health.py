@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 SERVICE = "websocket-service"
@@ -16,6 +16,7 @@ async def live() -> Health:
 
 
 @router.get("/ready", response_model=Health)
-async def ready() -> Health:
-    """Report process readiness only; no worker or integration is running yet."""
+async def ready(request: Request) -> Health:
+    if not request.app.state.hub.ready:
+        raise HTTPException(503, "Kitchen event stream unavailable")
     return Health(service=SERVICE, status="ready")

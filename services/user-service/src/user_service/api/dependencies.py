@@ -7,6 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from user_service.domain.users import Role
 from user_service.infrastructure.tokens import AccessClaims
 
 bearer = HTTPBearer(auto_error=False)
@@ -20,13 +21,16 @@ async def access_claims(
         raise HTTPException(401, "Authentication required", headers={"WWW-Authenticate": "Bearer"})
     try:
         claims: AccessClaims = request.app.state.tokens.verify(credentials.credentials)
-        return claims
     except RuntimeError:
         raise HTTPException(503, "Authentication is not configured") from None
     except (jwt.PyJWTError, ValidationError, ValueError):
         raise HTTPException(
             401, "Invalid access token", headers={"WWW-Authenticate": "Bearer"}
         ) from None
+
+    if request.headers.get("X-MAI-Public-API") == "1" and claims.role != Role.CLIENT:
+        raise HTTPException(403, "Customer role required on the public API")
+    return claims
 
 
 async def session(request: Request) -> AsyncIterator[AsyncSession]:
