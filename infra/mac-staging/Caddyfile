@@ -32,7 +32,7 @@
 (static) {
 	@static method GET HEAD
 	handle @static {
-		root * /srv/current/{args[0]}
+		root * /srv/{$STAGING_ARTIFACT_REVISION:current}/{args[0]}
 		file_server
 	}
 	respond 404

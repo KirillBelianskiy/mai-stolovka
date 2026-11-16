@@ -103,7 +103,21 @@ The webhook is disabled on a fresh install. For a local synthetic smoke check, s
 
 Use `python3 infra/mac-staging.py status` to inspect this project and `python3 infra/mac-staging.py down` to stop it while preserving data. For logs, use the same Docker context, project, env file, and Compose files as the provisioning command above. Check worker status and logs after starting them since they have no readiness probe.
 
-`build FULL_COMMIT_SHA` builds and selects both exports from a clean snapshot. Failed builds leave the current release selected. `select FULL_COMMIT_SHA` rolls back to a previously built pair by replacing the shared symlink in one operation. A browser tab loaded before a switch should reload to use the new release. Static rollback does not reverse server migrations. Keep the backend checkout and selected frontend commit compatible.
+`build FULL_COMMIT_SHA` builds and selects both exports from a clean snapshot. Failed builds
+leave the current release selected. Use `select FULL_COMMIT_SHA` to switch to a previously
+built pair. Run it from the same staging worktree and instance used to start the stack.
+When ingress is running, Compose recreates only Caddy and waits for both listeners to
+become healthy. Caddy reads both frontends from the exact revision directory. The host
+`artifacts/current` link records the selected pair for the next startup. A switch can
+briefly interrupt routing and disconnect Kitchen WebSockets. Reload browser tabs after
+switching. Keep the backend checkout and selected frontend commit compatible.
+
+For rollback verification, read both listener homepages and a version-specific asset
+referenced by each page after the switch. Compare them with the selected export. On Docker
+Desktop, the previous symlink-only switch reported success on the host while the running
+container still resolved the old link. The ingress now uses the revision-specific path
+directly. The switch preserves the database and broker containers and does not apply or reverse
+migrations.
 
 ## Outbound transport candidates for a later staging session
 
