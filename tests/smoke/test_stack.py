@@ -147,6 +147,9 @@ class StackSmokeTests(unittest.TestCase):
                 "order_observations",
                 "observed_versions",
                 "ready_obligations",
+                "ready_dispatches",
+                "delivery_attempts",
+                "dispatch_bot",
             },
             "orders": {
                 "time_slots",
