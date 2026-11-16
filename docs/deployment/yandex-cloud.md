@@ -136,8 +136,16 @@ and WSS upgrade from an approved network. Validate a complete order, preparation
 notification and issuance with a controlled account. An unauthenticated Kitchen socket upgrade
 alone does not verify authorization or realtime delivery. Check Kafka consumer groups and
 worker logs, including lag and failed dispatch. Disabled workers have no readiness endpoint.
-Provision staff and real catalog data through the approved local operator scripts and ADMIN
-interfaces. Keep fixture seeding out of production. See [local operations](mac-staging.md)
+Provision an initial administrator from the VM and set its password at the interactive prompt.
+
+```bash
+compose exec user-service /app/.venv/bin/python -m user_service.cli provision-staff \
+  --username "$staff_username" --full-name "$staff_full_name" --role ADMIN
+```
+
+Set the two shell variables to the approved staff member's login and name. Then use the
+ADMIN interface to enter the real catalog and future pickup slots. Keep fixture seeding
+out of production. See [local operations](mac-staging.md)
 and [readiness procedures](operations/readiness-runbook.md).
 
 For updates, build the reviewed commit first, record the prior commit and image IDs, arrange a
@@ -204,3 +212,19 @@ space before builds and upgrades. Treat 20 GiB as an option only with prebuilt i
 documented headroom. Build off-VM or temporarily increase RAM if builds exceed the VM budget.
 Compare region-specific VM hours, disk, public IP, backups and outbound traffic in Yandex's
 calculator before provisioning.
+
+## Local verification
+
+The Docker builds, four migrations, Kafka topic provisioning and startup completed in
+isolated local Compose. With a disposable Caddy CA and loopback test ports, both frontend
+hosts and their API routes responded over TLS. HTTP redirected with 308. Customer routes
+rejected a staff credential and blocked staff login, wallet credit, internal webhook and
+Kitchen WebSocket access. Kitchen WSS accepted a COOK credential and rejected a CLIENT
+credential and a foreign Origin. Live Telegram dispatch stayed disabled.
+
+The existing API acceptance harness passed all 11 stages in a separate disposable stack,
+including synthetic Telegram authentication, duplicate checkout, refund, repricing and cashier
+issuance. Both exports and frontend typechecks passed with Node 22.22.2. Docker Desktop is
+not the target 4 GiB Ubuntu VM. Before rollout, verify public certificates and DNS, the staff
+network rule from real devices, live Telegram delivery, reboot recovery, a PostgreSQL and
+Kafka restore exercise, and resource use under the intended load.
