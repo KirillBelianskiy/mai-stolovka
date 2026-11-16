@@ -21,6 +21,7 @@ STATE = ROOT / (".private/mac-staging-release" if RELEASE else ".private/mac-sta
 ARTIFACTS = STATE / "artifacts"
 ENV_FILE = STATE / "staging.env"
 BASELINE = "585f6147dc2c6fca6301d6e6339afd10f4991944"
+REVISION = re.compile(r"[0-9a-f]{40}")
 APPS = ("telegram-mini-app", "kitchen-app")
 SERVICES = ("user-service", "menu-service", "order-service", "notification-service")
 COMPOSE = [
@@ -47,7 +48,17 @@ def run(*args, cwd=ROOT, **kwargs):
     return subprocess.run(args, cwd=cwd, check=True, **kwargs)
 
 
-def compose(*args, **kwargs):
+def selected_revision():
+    pointer = ARTIFACTS / "current"
+    if not pointer.is_symlink():
+        return "current"
+    revision = str(pointer.readlink())
+    if not REVISION.fullmatch(revision):
+        raise SystemExit("The current artifact link must point to a full commit SHA")
+    return revision
+
+
+def compose(*args, revision=None, **kwargs):
     # Compose gives the shell priority over --env-file. Keep project settings self-contained.
     inherited = ("PATH", "HOME", "TMPDIR", "TERM", "USER", "LOGNAME", "DOCKER_CONFIG")
     env = {key: os.environ[key] for key in inherited if key in os.environ}
@@ -55,8 +66,9 @@ def compose(*args, **kwargs):
         STAGING_CUSTOMER_PORT=str(CUSTOMER_PORT),
         STAGING_KITCHEN_PORT=str(KITCHEN_PORT),
         STAGING_ARTIFACTS_DIR=str(ARTIFACTS),
+        STAGING_ARTIFACT_REVISION=revision or selected_revision(),
     )
-    run(*COMPOSE, *args, env=env, **kwargs)
+    return run(*COMPOSE, *args, env=env, **kwargs)
 
 
 def init():
@@ -122,11 +134,41 @@ def select(revision):
     release = ARTIFACTS / revision
     if not all((release / app / "index.html").is_file() for app in APPS):
         raise SystemExit(f"Missing completed static release {revision}")
+    previous = selected_revision()
+    running = (
+        ENV_FILE.is_file()
+        and compose(
+            "ps", "--status", "running", "-q", "staging-ingress", capture_output=True, text=True
+        ).stdout.strip()
+    )
     with tempfile.TemporaryDirectory(dir=ARTIFACTS) as directory:
         link = Path(directory) / "current"
         link.symlink_to(revision)
-        link.replace(ARTIFACTS / "current")
+        if running:
+            try:
+                # A changed revision recreates only Caddy. Docker Desktop can keep
+                # resolving a replaced symlink to its previous target in a bind mount.
+                apply_ingress_revision(revision)
+                link.replace(ARTIFACTS / "current")
+            except (OSError, subprocess.CalledProcessError):
+                apply_ingress_revision(previous)
+                raise
+        else:
+            link.replace(ARTIFACTS / "current")
     print(f"Selected static release {revision}")
+
+
+def apply_ingress_revision(revision):
+    compose(
+        "up",
+        "-d",
+        "--no-deps",
+        "--wait",
+        "--wait-timeout",
+        "60",
+        "staging-ingress",
+        revision=revision,
+    )
 
 
 def build(revision):
@@ -304,7 +346,7 @@ def main():
     if args.revision and args.action not in {"build", "select"}:
         parser.error("a revision is accepted only for build or select")
     revision = args.revision or BASELINE
-    if not re.fullmatch(r"[0-9a-f]{40}", revision):
+    if not REVISION.fullmatch(revision):
         parser.error("provide a full commit SHA")
     STATE.mkdir(mode=0o700, parents=True, exist_ok=True)
     ARTIFACTS.mkdir(exist_ok=True)

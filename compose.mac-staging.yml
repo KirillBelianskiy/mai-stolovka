@@ -90,6 +90,7 @@ services:
       - "127.0.0.1:${STAGING_KITCHEN_PORT:-18281}:8081"
     environment:
       STAGING_WEBHOOK_ENABLED: ${STAGING_WEBHOOK_ENABLED:-false}
+      STAGING_ARTIFACT_REVISION: ${STAGING_ARTIFACT_REVISION:-current}
     volumes:
       - ./infra/mac-staging/Caddyfile:/etc/caddy/Caddyfile:ro
       - ${STAGING_ARTIFACTS_DIR:-./.private/mac-staging/artifacts}:/srv:ro
