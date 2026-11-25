@@ -1,5 +1,6 @@
 """Integration checks for an already running disposable Compose stack."""
 
+import http.client
 import json
 import secrets
 import subprocess
@@ -7,6 +8,7 @@ import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.error import HTTPError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
@@ -100,6 +102,51 @@ class StackSmokeTests(unittest.TestCase):
                 urlopen(f"{self.mini}{path}", timeout=10)
             self.assertEqual(error.exception.code, 404)
 
+    def test_recipient_endpoints_are_private_but_telegram_webhook_is_routed(self) -> None:
+        for base in (self.mini, self.kitchen):
+            recipients = f"{base}/api/v1/users/internal/v1/notification-recipients/{uuid4()}"
+            with self.subTest(base=base), self.assertRaises(HTTPError) as blocked:
+                urlopen(recipients, timeout=10)
+            with blocked.exception as response:
+                self.assertEqual(response.code, 404)
+
+            webhook = Request(
+                f"{base}/api/v1/users/internal/v1/telegram/webhook",
+                data=b'{"update_id": 1}',
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with self.subTest(base=base), self.assertRaises(HTTPError) as routed:
+                urlopen(webhook, timeout=10)
+            with routed.exception as response:
+                self.assertIn(response.code, (403, 503))
+                expected = {
+                    403: "Invalid webhook secret",
+                    503: "Telegram webhook authentication is not configured",
+                }
+                self.assertEqual(json.load(response)["detail"], expected[response.code])
+
+    def test_kitchen_websocket_upgrade(self) -> None:
+        kitchen = urlsplit(self.kitchen)
+        connection = http.client.HTTPConnection(kitchen.hostname, kitchen.port, timeout=10)
+        try:
+            connection.request(
+                "GET",
+                "/api/v1/ws/kitchen",
+                headers={
+                    "Connection": "Upgrade",
+                    "Upgrade": "websocket",
+                    "Origin": "http://localhost:8081",
+                    "Sec-WebSocket-Version": "13",
+                    "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
+                },
+            )
+            response = connection.getresponse()
+            self.assertEqual(response.status, 101)
+            self.assertEqual(response.getheader("Upgrade", "").lower(), "websocket")
+        finally:
+            connection.close()
+
     def test_database_connections_and_isolation(self) -> None:
         for prefix, _ in DATABASES:
             result = sql(prefix, f"{prefix}_db", "SELECT current_user")
@@ -131,7 +178,14 @@ class StackSmokeTests(unittest.TestCase):
 
     def test_alembic_expected_schema(self) -> None:
         expected = {
-            "users": {"users", "staff_credentials"},
+            "users": {
+                "users",
+                "staff_credentials",
+                "user_sessions",
+                "telegram_recipient_permissions",
+                "telegram_update_receipts",
+                "recipient_block_reports",
+            },
             "menu": {"categories", "menu_items"},
             "notifications": {
                 "source_checkpoints",
@@ -140,6 +194,9 @@ class StackSmokeTests(unittest.TestCase):
                 "order_observations",
                 "observed_versions",
                 "ready_obligations",
+                "ready_dispatches",
+                "delivery_attempts",
+                "dispatch_bot",
             },
             "orders": {
                 "time_slots",

@@ -1,0 +1,156 @@
+{
+  "checked_at": "2026-11-05T18:39:10.686391+00:00",
+  "scope": "anonymous local HTTP route preflight",
+  "origins": {
+    "customer": "http://localhost:8180",
+    "staff": "http://localhost:8181"
+  },
+  "preflight_passed": true,
+  "journey_acceptance": "not_run",
+  "unexecuted_scenarios": [
+    "A1",
+    "A2",
+    "A3",
+    "A4",
+    "A5",
+    "A6",
+    "A7",
+    "A8"
+  ],
+  "checks": [
+    {
+      "surface": "customer",
+      "path": "/",
+      "passed": true,
+      "http_status": 200
+    },
+    {
+      "surface": "customer",
+      "path": "/health/user/ready",
+      "passed": true,
+      "http_status": 200
+    },
+    {
+      "surface": "customer",
+      "path": "/health/menu/ready",
+      "passed": true,
+      "http_status": 200
+    },
+    {
+      "surface": "customer",
+      "path": "/health/order/ready",
+      "passed": true,
+      "http_status": 200
+    },
+    {
+      "surface": "customer",
+      "path": "/health/notification/ready",
+      "passed": true,
+      "http_status": 200
+    },
+    {
+      "surface": "customer",
+      "path": "/health/websocket/ready",
+      "passed": true,
+      "http_status": 200
+    },
+    {
+      "surface": "customer",
+      "path": "/api/v1/menu/categories",
+      "passed": true,
+      "http_status": 200
+    },
+    {
+      "surface": "customer",
+      "path": "/api/v1/menu/items?limit=1&offset=0",
+      "passed": true,
+      "http_status": 200
+    },
+    {
+      "surface": "customer",
+      "path": "/api/v1/users/me",
+      "passed": true,
+      "http_status": 401
+    },
+    {
+      "surface": "customer",
+      "path": "/api/v1/orders/",
+      "passed": true,
+      "http_status": 401
+    },
+    {
+      "surface": "customer",
+      "path": "/api/v1/orders/wallet",
+      "passed": true,
+      "http_status": 401
+    },
+    {
+      "surface": "staff",
+      "path": "/",
+      "passed": true,
+      "http_status": 200
+    },
+    {
+      "surface": "staff",
+      "path": "/health/user/ready",
+      "passed": true,
+      "http_status": 200
+    },
+    {
+      "surface": "staff",
+      "path": "/health/menu/ready",
+      "passed": true,
+      "http_status": 200
+    },
+    {
+      "surface": "staff",
+      "path": "/health/order/ready",
+      "passed": true,
+      "http_status": 200
+    },
+    {
+      "surface": "staff",
+      "path": "/health/notification/ready",
+      "passed": true,
+      "http_status": 200
+    },
+    {
+      "surface": "staff",
+      "path": "/health/websocket/ready",
+      "passed": true,
+      "http_status": 200
+    },
+    {
+      "surface": "staff",
+      "path": "/api/v1/menu/categories",
+      "passed": true,
+      "http_status": 200
+    },
+    {
+      "surface": "staff",
+      "path": "/api/v1/menu/items?limit=1&offset=0",
+      "passed": true,
+      "http_status": 200
+    },
+    {
+      "surface": "staff",
+      "path": "/api/v1/users/me",
+      "passed": true,
+      "http_status": 401
+    },
+    {
+      "surface": "staff",
+      "path": "/api/v1/orders/",
+      "passed": true,
+      "http_status": 401
+    },
+    {
+      "surface": "staff",
+      "path": "/api/v1/orders/wallet",
+      "passed": true,
+      "http_status": 401
+    }
+  ],
+  "source_revision": "87cf9e5989d248cae44aacdfedf708c820cb8411",
+  "deployed_revision_verified": false
+}

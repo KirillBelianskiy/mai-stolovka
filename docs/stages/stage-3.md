@@ -59,8 +59,8 @@ uv sync --frozen --project services/order-service
 docker compose build menu-service order-service
 docker compose run --rm --no-deps --entrypoint /app/.venv/bin/alembic order-service upgrade head
 docker compose up -d --wait menu-service order-service proxy
-docker compose exec -T proxy nginx -t
-docker compose exec -T proxy nginx -s reload
+docker compose exec -T proxy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker compose up -d --no-deps --force-recreate --wait proxy
 ```
 
 Fresh setups also follow the root README for DB credentials/JWT keys and all three migrations.

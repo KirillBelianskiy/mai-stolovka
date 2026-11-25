@@ -1,6 +1,43 @@
 {
   "components": {
     "schemas": {
+      "BlockObservation": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "notification_id": {
+            "format": "uuid",
+            "title": "Notification Id",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "bot_forbidden",
+              "private_chat_blocked"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "telegram_user_id": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 9.223372036854776e+18,
+            "title": "Telegram User Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "telegram_user_id",
+          "notification_id",
+          "reason"
+        ],
+        "title": "BlockObservation",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -75,6 +112,75 @@
         "title": "ProfileUpdate",
         "type": "object"
       },
+      "RecipientPermissionState": {
+        "enum": [
+          "unknown",
+          "allowed",
+          "blocked"
+        ],
+        "title": "RecipientPermissionState",
+        "type": "string"
+      },
+      "RecipientSnapshot": {
+        "properties": {
+          "evidence_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Kind"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/RecipientPermissionState"
+          },
+          "telegram_chat_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Telegram Chat Id"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "state",
+          "telegram_chat_id",
+          "revision",
+          "observed_at",
+          "evidence_kind"
+        ],
+        "title": "RecipientSnapshot",
+        "type": "object"
+      },
       "Role": {
         "enum": [
           "CLIENT",
@@ -124,6 +230,106 @@
           "init_data"
         ],
         "title": "TelegramLogin",
+        "type": "object"
+      },
+      "TelegramWebhookChat": {
+        "properties": {
+          "id": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 9.223372036854776e+18,
+            "title": "Id",
+            "type": "integer"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type"
+        ],
+        "title": "TelegramWebhookChat",
+        "type": "object"
+      },
+      "TelegramWebhookMessage": {
+        "properties": {
+          "chat": {
+            "$ref": "#/components/schemas/TelegramWebhookChat"
+          },
+          "date": {
+            "exclusiveMinimum": 0.0,
+            "title": "Date",
+            "type": "integer"
+          },
+          "from": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TelegramWebhookUser"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "write_access_allowed": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Write Access Allowed"
+          }
+        },
+        "required": [
+          "chat",
+          "date"
+        ],
+        "title": "TelegramWebhookMessage",
+        "type": "object"
+      },
+      "TelegramWebhookUpdate": {
+        "properties": {
+          "message": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TelegramWebhookMessage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "update_id": {
+            "maximum": 9.223372036854776e+18,
+            "minimum": 0.0,
+            "title": "Update Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "update_id"
+        ],
+        "title": "TelegramWebhookUpdate",
+        "type": "object"
+      },
+      "TelegramWebhookUser": {
+        "properties": {
+          "id": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 9.223372036854776e+18,
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "TelegramWebhookUser",
         "type": "object"
       },
       "UserProfile": {
@@ -233,6 +439,131 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/auth/logout": {
+      "post": {
+        "description": "Revokes the presented Mini App session when present and clears its cookie. Requires an allowlisted Origin. Existing access JWTs remain valid until expiry.",
+        "operationId": "logout_auth_logout_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "origin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Origin"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "mai_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mai Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/auth/session": {
+      "post": {
+        "description": "Restores the Mini App identity from the mai_session cookie and issues a fresh access JWT. Requires an allowlisted Origin.",
+        "operationId": "restore_session_auth_session_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "origin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Origin"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "mai_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mai Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Session",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
     "/auth/staff": {
       "post": {
         "operationId": "staff_login_auth_staff_post",
@@ -276,7 +607,26 @@
     },
     "/auth/telegram": {
       "post": {
+        "description": "Validates fresh Telegram initData, creates a revocable browser session, and sets the Secure, HttpOnly mai_session cookie. Requires an allowlisted Origin.",
         "operationId": "telegram_login_auth_telegram_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "origin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Origin"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -354,6 +704,164 @@
         "summary": "Ready",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/internal/v1/notification-recipients/{user_id}": {
+      "get": {
+        "operationId": "resolve_recipient_internal_v1_notification_recipients__user_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipientSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resolve Recipient",
+        "tags": [
+          "notification recipients"
+        ]
+      }
+    },
+    "/internal/v1/notification-recipients/{user_id}/blocked": {
+      "post": {
+        "operationId": "report_block_internal_v1_notification_recipients__user_id__blocked_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockObservation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipientSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Report Block",
+        "tags": [
+          "notification recipients"
+        ]
+      }
+    },
+    "/internal/v1/telegram/webhook": {
+      "post": {
+        "operationId": "telegram_webhook_internal_v1_telegram_webhook_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Telegram-Bot-Api-Secret-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Telegram-Bot-Api-Secret-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelegramWebhookUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Telegram Webhook",
+        "tags": [
+          "notification recipients"
         ]
       }
     },

@@ -1,0 +1,128 @@
+{
+	admin off
+}
+
+import routes.caddy
+
+(clean) {
+	request_header -Forwarded
+	request_header -X-Forwarded-*
+	request_header -X-Real-IP
+	request_header -X-Original-*
+	request_header -X-Rewrite-*
+	request_header -X-MAI-*
+	request_body {
+		max_size 128KB
+	}
+	@noncanonical expression `path_regexp('(?i)^/api(/|$)') && {http.request.orig_uri}.matches('^[^?]*(%|//|/[.]{1,2}(/|[?]|$))')`
+	respond @noncanonical 404
+}
+
+(deny_unknown_api) {
+	@unknown path_regexp (?i)^/(api|health)(/|$)
+	respond @unknown 404
+}
+
+maistolovka.me {
+	import edge_http
+	route {
+		import clean
+		@menu {
+			method GET
+			path_regexp ^/api/v1/menu/(categories|items(/[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})?)$
+		}
+		handle @menu {
+			uri strip_prefix /api/v1/menu
+			reverse_proxy menu-service:8000
+		}
+		@session {
+			method POST
+			path /api/v1/users/auth/telegram /api/v1/users/auth/session /api/v1/users/auth/logout
+		}
+		header @session Cache-Control no-store
+		handle @session {
+			uri strip_prefix /api/v1/users
+			reverse_proxy user-service:8000 {
+				header_up -Authorization
+			}
+		}
+		@client expression `({method} in ['GET', 'PATCH'] && {path} == '/api/v1/users/me') || ({method} == 'GET' && path_regexp('^/api/v1/orders/($|wallet$|slots$|[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$)')) || ({method} == 'POST' && path_regexp('^/api/v1/orders/($|[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}/cancel$)'))`
+		handle @client {
+			route {
+				header Cache-Control no-store
+				forward_auth customer-role:8000 {
+					uri /client
+				}
+				handle_path /api/v1/users/* {
+					reverse_proxy user-service:8000 {
+						header_up X-MAI-Public-API 1
+					}
+				}
+				handle_path /api/v1/orders/* {
+					reverse_proxy order-service:8000 {
+						header_up X-MAI-Public-API 1
+					}
+				}
+			}
+		}
+		@webhook expression `'{$PROD_WEBHOOK_ENABLED:false}' == 'true' && {method} == 'POST' && {http.request.orig_uri} == '/api/v1/users/internal/v1/telegram/webhook'`
+		handle @webhook {
+			uri strip_prefix /api/v1/users
+			reverse_proxy user-service:8000 {
+				header_up -Authorization
+				header_up -Cookie
+			}
+		}
+		import deny_unknown_api
+		@static method GET HEAD
+		reverse_proxy @static telegram-mini-app:80
+		respond 404
+	}
+}
+
+kitchen.maistolovka.me {
+	import edge_http
+	route {
+		@outside not remote_ip {$PROD_KITCHEN_CIDRS}
+		respond @outside 403
+		header Cache-Control no-store
+		import clean
+		@staff_login {
+			method POST
+			path /api/v1/users/auth/staff
+		}
+		handle @staff_login {
+			route {
+				import staff_login_limit
+				rewrite * /auth/staff
+				reverse_proxy user-service:8000
+			}
+		}
+		handle /api/v1/users/me {
+			rewrite * /me
+			reverse_proxy user-service:8000
+		}
+		handle /api/v1/ws/kitchen {
+			reverse_proxy websocket-service:8000
+		}
+		@staff_menu path_regexp ^/api/v1/menu/(categories(/[^/]+)?|items(/[^/]+)?|admin/items)$
+		handle @staff_menu {
+			uri strip_prefix /api/v1/menu
+			reverse_proxy menu-service:8000
+		}
+		@staff_orders path_regexp ^/api/v1/orders/($|wallet/credits$|slots(/[^/]+)?$|[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}(/(status|cancel))?$)
+		handle @staff_orders {
+			uri strip_prefix /api/v1/orders
+			reverse_proxy order-service:8000
+		}
+		import deny_unknown_api
+		@static method GET HEAD
+		reverse_proxy @static kitchen-app:80
+		respond 404
+	}
+}
+
+http://:8082 {
+	bind 127.0.0.1
+	respond "ok"
+}

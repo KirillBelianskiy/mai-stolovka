@@ -8,8 +8,10 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from user_service.api.accounts import router as business_router
 from user_service.api.health import router
+from user_service.api.recipients import router as recipient_router
 from user_service.config import Settings
 from user_service.infrastructure.database import Database
+from user_service.infrastructure.service_tokens import NotificationServiceTokenVerifier
 from user_service.infrastructure.signing import TokenIssuer
 
 
@@ -36,6 +38,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         servers=[{"url": settings.root_path}],
     )
     app.state.tokens = TokenIssuer(settings)
+    app.state.notification_tokens = NotificationServiceTokenVerifier(settings)
     app.state.settings = settings
 
     @app.exception_handler(SQLAlchemyError)
@@ -47,4 +50,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(router)
     app.include_router(business_router)
+    app.include_router(recipient_router)
     return app

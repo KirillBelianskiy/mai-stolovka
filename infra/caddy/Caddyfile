@@ -1,0 +1,80 @@
+{
+	admin off
+}
+
+import routes.caddy
+
+(local_api) {
+	request_body {
+		max_size 1048576
+	}
+	@private path /api/v1/users/internal/v1/notification-recipients /api/v1/users/internal/v1/notification-recipients/*
+	respond @private 404
+	@staff_login {
+		method POST
+		path /api/v1/users/auth/staff
+	}
+	handle @staff_login {
+		route {
+			import staff_login_limit
+			rewrite * /auth/staff
+			reverse_proxy user-service:8000
+		}
+	}
+	redir /api/v1/users /api/v1/users/ 308
+	redir /api/v1/menu /api/v1/menu/ 308
+	handle_path /api/v1/users/* {
+		reverse_proxy user-service:8000
+	}
+	handle_path /api/v1/menu/* {
+		reverse_proxy menu-service:8000
+	}
+	handle /api/v1/orders {
+		rewrite * /
+		reverse_proxy order-service:8000
+	}
+	handle_path /api/v1/orders/* {
+		reverse_proxy order-service:8000
+	}
+	handle /api/v1/ws/kitchen {
+		reverse_proxy websocket-service:8000
+	}
+}
+
+(local_routes) {
+	import edge_http
+	route {
+		import local_api
+		handle /health/user/* {
+			uri replace /health/user/ /health/ 1
+			reverse_proxy user-service:8000
+		}
+		handle /health/menu/* {
+			uri replace /health/menu/ /health/ 1
+			reverse_proxy menu-service:8000
+		}
+		handle /health/order/* {
+			uri replace /health/order/ /health/ 1
+			reverse_proxy order-service:8000
+		}
+		handle /health/notification/* {
+			uri replace /health/notification/ /health/ 1
+			reverse_proxy notification-service:8000
+		}
+		handle /health/websocket/* {
+			uri replace /health/websocket/ /health/ 1
+			reverse_proxy websocket-service:8000
+		}
+		@unknown path /api /api/*
+		respond @unknown 404
+		reverse_proxy {args[0]}:80
+	}
+}
+
+http://:8080 {
+	import local_routes telegram-mini-app
+}
+
+http://:8081 {
+	import local_routes kitchen-app
+}

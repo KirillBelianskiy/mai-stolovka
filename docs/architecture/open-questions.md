@@ -22,7 +22,7 @@ These are explicit follow-up decisions. Nothing in the placeholder UI answers th
 
 - Python 3.12, Node 22, five independent Python environments, npm workspaces for two apps.
 - One local PostgreSQL instance with three databases and separate owners; one local Kafka KRaft node.
-- NGINX reverse proxy; two static exports; local ports 8080 and 8081 by default.
+- Caddy reverse proxy; two static exports; local ports 8080 and 8081 by default.
 - Stage 1 stopped at shells. Stage 2 adds User/Menu APIs; Stage 3 adds transactional orders, slot policies and persisted Outbox. Event delivery and real-time interfaces remain deferred.
 - Domain/application directories are boundary markers, not implemented frameworks.
 - All business prices are intended as integer kopecks; all stored times are timezone-aware.

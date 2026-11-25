@@ -86,7 +86,28 @@ jobs:
       - run: python infra/create-local-env.py
       - run: python infra/create-auth-env.py
       - run: docker compose config --quiet
+      - name: Validate production Compose model
+        env:
+          PROD_KITCHEN_CIDRS: 127.0.0.1/32
+        run: >-
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml
+          --profile outbox --profile inbox --profile telegram config --quiet
+      - name: Validate local demo and Mac staging Compose models
+        env:
+          STAGING_CUSTOMER_ORIGIN: http://localhost:18280
+          STAGING_KITCHEN_ORIGIN: http://localhost:18281
+        run: |
+          docker compose -f docker-compose.yml -f compose.local-demo.yml config --quiet
+          docker compose -f docker-compose.yml -f compose.mac-staging.yml --profile outbox --profile inbox config --quiet
       - run: docker compose up --build --wait --wait-timeout 300
+      - name: Validate production Caddyfile
+        run: |
+          docker run --rm \
+            -e PROD_KITCHEN_CIDRS=127.0.0.1/32 -e PROD_WEBHOOK_ENABLED=true \
+            -v "$PWD/infra/production/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            -v "$PWD/infra/caddy/routes.caddy:/etc/caddy/routes.caddy:ro" \
+            "$(docker compose images -q proxy)" \
+            caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
       - run: uv sync --frozen --project services/user-service
       - run: uv sync --frozen --project services/menu-service
       - run: uv sync --frozen --project services/order-service
@@ -99,3 +120,23 @@ jobs:
       - name: Remove disposable CI stack
         if: always()
         run: docker compose down --volumes --remove-orphans
+
+  production-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fetch the immutable compatibility baseline
+        run: git fetch --no-tags --depth=1 origin f0202c1a1924415018236a7641df7a9623adf0f8
+      - name: Exercise isolated production routes with local TLS and fake Telegram
+        run: python tests/e2e/production_release.py --output "$RUNNER_TEMP/production-release.json"
+      - name: Upload sanitized exact-revision evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-release-${{ github.sha }}
+          path: ${{ runner.temp }}/production-release.json
+          if-no-files-found: error

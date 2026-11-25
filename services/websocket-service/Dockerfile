@@ -9,4 +9,4 @@ RUN uv sync --frozen --no-dev && useradd --create-home --uid 10001 app
 USER app
 EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=5 CMD ["/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"]
-CMD ["/app/.venv/bin/uvicorn", "websocket_service.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]
+CMD ["/app/.venv/bin/uvicorn", "websocket_service.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--ws", "wsproto", "--ws-max-size", "12288", "--ws-ping-interval", "20", "--ws-ping-timeout", "20", "--no-proxy-headers"]
