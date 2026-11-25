@@ -3,6 +3,8 @@
 	auto_https off
 }
 
+import routes.caddy
+
 (clean_request) {
 	request_header -Forwarded
 	request_header -X-Forwarded-*
@@ -39,6 +41,7 @@
 }
 
 :8080 {
+	import edge_http
 	route {
 		import clean_request
 		request_body {
@@ -124,6 +127,7 @@
 }
 
 :8081 {
+	import edge_http
 	route {
 		import clean_request
 		request_body {
@@ -131,7 +135,20 @@
 		}
 		header Cache-Control "no-store"
 
-		@user path /api/v1/users/auth/staff /api/v1/users/me
+		@staff_login {
+			method POST
+			path /api/v1/users/auth/staff
+		}
+		handle @staff_login {
+			route {
+				import staff_login_limit
+				rewrite * /auth/staff
+				reverse_proxy user-service:8000 {
+					import clean_upstream
+				}
+			}
+		}
+		@user path /api/v1/users/me
 		handle @user {
 			uri strip_prefix /api/v1/users
 			reverse_proxy user-service:8000 {

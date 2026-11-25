@@ -113,3 +113,21 @@ jobs:
       - name: Remove disposable CI stack
         if: always()
         run: docker compose down --volumes --remove-orphans
+
+  production-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exercise isolated production routes with local TLS and fake Telegram
+        run: python tests/e2e/production_release.py --output "$RUNNER_TEMP/production-release.json"
+      - name: Upload sanitized exact-revision evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-release-${{ github.sha }}
+          path: ${{ runner.temp }}/production-release.json
+          if-no-files-found: error

@@ -62,6 +62,8 @@ import routes.caddy
 			uri replace /health/websocket/ /health/ 1
 			reverse_proxy websocket-service:8000
 		}
+		@unknown path /api /api/*
+		respond @unknown 404
 		reverse_proxy {args[0]}:80
 	}
 }
