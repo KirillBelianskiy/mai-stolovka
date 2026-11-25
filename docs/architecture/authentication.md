@@ -28,10 +28,8 @@ login. Operator-only commands provision COOK, CASHIER, or ADMIN accounts and res
 They require an interactive terminal and hidden password confirmation. Provisioning validates
 12–128 characters, writes user and credential atomically, and rejects duplicate logins.
 
-NGINX limits the exact staff-login route to 10 requests/minute per client IP with a burst of 10;
-excess requests return 429. This is a local edge guard, not per-account lockout or a complete
-production abuse-control system. Backend ports are not published. Review client-IP forwarding,
-TLS, account recovery, MFA, and audit requirements before exposing real staff credentials.
+Caddy limits the exact staff-login route to 10 requests per source IP over a rolling minute.
+Excess requests return 429. User Service enforces staff authentication on the Compose network.
 
 ## Access tokens and service boundaries
 

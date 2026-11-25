@@ -8,8 +8,8 @@ RUN --mount=type=cache,target=/root/.npm npm ci --no-fund --fetch-retries=3
 COPY apps/kitchen-app ./apps/kitchen-app
 RUN npm run build --workspace @mai/kitchen-app
 
-FROM nginx:1.30.6-alpine
-COPY infra/nginx/static.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/apps/kitchen-app/out /usr/share/nginx/html
+FROM caddy:2.11.9-alpine
+COPY infra/caddy/static.Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /app/apps/kitchen-app/out /srv
 EXPOSE 80
 HEALTHCHECK --interval=10s --timeout=3s --retries=5 CMD wget -q -O /dev/null http://127.0.0.1/ || exit 1

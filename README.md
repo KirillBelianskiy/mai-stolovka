@@ -14,7 +14,7 @@ services/{user,menu}-service             Authentication/profile and menu APIs
 services/order-service                  Transactional orders, slots, and persisted Outbox
 services/{notification,websocket}-service  Process-only FastAPI shells
 packages/contracts                     Language-neutral event schemas and examples
-infra/{postgres,nginx}                 Local provisioning and reverse proxy configuration
+infra/{postgres,caddy}                 Local provisioning and reverse proxy configuration
 docs/architecture                      Boundaries, consistency design, open decisions
 tests/{contracts,smoke}                 Schema checks and running-stack integration checks
 .github/workflows                      Python, frontend, build, and integration gates
@@ -29,6 +29,8 @@ Start with [architecture overview](docs/architecture/overview.md),
 See [Stage 3 verification](docs/verification-stage3.md) for current checks,
 [Stage 2 verification](docs/verification-stage2.md) and
 [Stage 1 evidence](docs/verification.md) for the historical bootstrap.
+
+For the VM, see [production deployment on Yandex Cloud](docs/deployment/yandex-cloud.md).
 
 ## Prerequisites
 

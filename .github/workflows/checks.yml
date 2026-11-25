@@ -86,7 +86,21 @@ jobs:
       - run: python infra/create-local-env.py
       - run: python infra/create-auth-env.py
       - run: docker compose config --quiet
+      - name: Validate production Compose model
+        env:
+          PROD_KITCHEN_CIDRS: 127.0.0.1/32
+        run: >-
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml
+          --profile outbox --profile inbox --profile telegram config --quiet
       - run: docker compose up --build --wait --wait-timeout 300
+      - name: Validate production Caddyfile
+        run: |
+          docker run --rm \
+            -e PROD_KITCHEN_CIDRS=127.0.0.1/32 -e PROD_WEBHOOK_ENABLED=true \
+            -v "$PWD/infra/production/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            -v "$PWD/infra/caddy/routes.caddy:/etc/caddy/routes.caddy:ro" \
+            "$(docker compose images -q proxy)" \
+            caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
       - run: uv sync --frozen --project services/user-service
       - run: uv sync --frozen --project services/menu-service
       - run: uv sync --frozen --project services/order-service

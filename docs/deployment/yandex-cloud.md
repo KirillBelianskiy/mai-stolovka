@@ -10,8 +10,20 @@ Caddy terminates HTTPS for `maistolovka.me` and `kitchen.maistolovka.me`. Only C
 publishes Docker host ports. The customer origin serves a static Mini App and an allowlisted
 same-origin API. The separate Kitchen origin is restricted to operator-supplied source networks
 and still requires staff authentication for staff operations. Caddy uses the existing JWT
-verifier for the customer role check. Nginx keeps API prefix stripping, static frontend proxying,
-and Kitchen WebSocket upgrades. The two Next.js exports ship in independent Nginx images.
+verifier for the customer role check. The public Caddy service (`edge`) strips API prefixes,
+routes directly to FastAPI, and upgrades Kitchen connections to WebSocket. Both Next.js exports
+use internal Caddy static servers. Upstreams use Docker DNS on the existing default network.
+Production leaves the local HTTP proxy disabled.
+
+The production Caddyfile enables ACME, renewal, HTTP redirects, zstd/gzip, and access logs.
+The existing TLS volumes back `/data` and `/config`. Access logs omit the Telegram webhook
+secret header and known token query parameters. The public URL allowlists, Kitchen source
+CIDRs, 128 kB body limit, forwarding header cleanup and client role check stay in effect.
+Caddy adds its own client IP, host and scheme forwarding headers.
+
+Staff login uses a pinned Caddy module built with the official Caddy builder. It allows
+10 requests per source IP in a rolling minute, then returns 429. The previous limiter used
+an initial burst followed by gradual refill.
 
 | Component | Data and dependencies |
 | --- | --- |
@@ -49,13 +61,41 @@ Clean databases start without menu items, slots, or staff accounts.
    `sudo systemctl enable --now docker`. Use Compose **2.24.4 or later** for the overlay tags.
    Docker group membership gives root-equivalent access. If using sudo, run the same launcher
    consistently with sudo and give its operator access to the external env file.
-5. Add DNS A records for the apex and Kitchen host at the authoritative DNS provider, using the
-   assigned VM address. Check CAA and remove any stale AAAA records unless IPv6 is configured.
-   Keep the existing production DNS until the release is approved. For pre-cutover tests
-   use distinct approved hostnames with matching certificates and origins, or a local isolated
-   rehearsal with an internal CA. Caddy obtains and renews public certificates when the real
-   DNS and ports are reachable. DNS or CDN proxying in front of Caddy is outside this direct
-   ingress configuration because the staff allowlist uses the actual connection address.
+5. Reserve a static public IPv4 in Yandex Cloud and assign it to the VM. Record the previous
+   DNS records and TTLs before switching traffic.
+
+| Ingress protocol | Port | Source |
+| --- | --- | --- |
+| TCP | 80 | `0.0.0.0/0` |
+| TCP | 443 | `0.0.0.0/0` |
+| TCP | 22 | Trusted administrator public IPv4 as a `/32` |
+
+Check all attached groups for broader SSH rules and confirm a second SSH connection
+before removing the previous rule.
+
+### Namecheap DNS
+
+Check delegation with `dig +short NS maistolovka.me`. With Namecheap BasicDNS,
+PremiumDNS or FreeDNS active, open **Domain List → Manage → Advanced DNS → Host Records**.
+
+| Record | Host | Value |
+| --- | --- | --- |
+| A | `@` | Static public IPv4 of the Yandex VM |
+| A | `kitchen` | Same static public IPv4 |
+
+Remove stale A, AAAA, CNAME/ALIAS or URL Redirect records that compete for either host.
+Keep mail and ownership records. Check that any CAA policy permits Caddy's ACME issuers.
+If nameservers are delegated elsewhere, prepare the full DNS zone before changing delegation.
+Both hosts should resolve directly to the VM, since Kitchen authorizes the TCP peer address.
+[Namecheap A records](https://www.namecheap.com/support/knowledgebase/article.aspx/319/2237/how-can-i-set-up-an-a-address-record-for-my-domain/)
+
+```sh
+for host in maistolovka.me kitchen.maistolovka.me; do
+  dig +short "$host" A
+  dig +short "$host" AAAA
+  dig +short "$host" CAA
+done
+```
 
 [Create a Yandex Linux VM](https://yandex.cloud/en/docs/compute/operations/vm-create/create-linux-vm) ·
 [Yandex SSH and security groups](https://yandex.cloud/en/docs/getting-started/individuals/create-vm) ·
@@ -70,7 +110,9 @@ accepts plain `NAME=value` lines. Use no quotes or shell substitution in the fil
 
 ```bash
 mkdir -p "$HOME/.config/mai-food"
-install -m 600 infra/production/env.example "$HOME/.config/mai-food/production.env"
+if [ ! -e "$HOME/.config/mai-food/production.env" ]; then
+  install -m 600 infra/production/env.example "$HOME/.config/mai-food/production.env"
+fi
 ```
 
 - Generate a separate `openssl rand -hex 32` value for each database password. Do not
@@ -95,10 +137,26 @@ install -m 600 infra/production/env.example "$HOME/.config/mai-food/production.e
   Use a controlled test bot for first acceptance. Keep Telegram tokens out of shell arguments,
   command history, logs and URLs you share. [Telegram webhook](https://core.telegram.org/bots/api#setwebhook)
 
+Before cutting over, inspect the current host listeners and running containers.
+
+```sh
+sudo ss -ltnp '( sport = :80 or sport = :443 )'
+docker ps --format 'table {{.Names}}\t{{.Ports}}'
+sudo systemctl is-active nginx
+sudo systemctl is-enabled nginx
+```
+
+If host Nginx owns either port, identify its sites and save its configuration and service state.
+If it serves MAI Food only, run `sudo systemctl stop nginx` in the cutover window after the
+build. Disable it with `sudo systemctl disable nginx` after the new deployment passes the
+checks below. If other sites share the listeners, coordinate their migration first. For the
+existing Compose setup, the launcher stops the previous proxy and reuses the same TLS volumes.
+
 ```bash
 env_file="$HOME/.config/mai-food/production.env"
 python3 infra/production/deploy.py --env-file "$env_file" check
 python3 infra/production/deploy.py --env-file "$env_file" build
+# Run in the approved cutover window.
 python3 infra/production/deploy.py --env-file "$env_file" deploy
 python3 infra/production/deploy.py --env-file "$env_file" status
 ```
@@ -125,14 +183,28 @@ compose() {
     --profile outbox --profile inbox --profile telegram "$@"
 }
 compose ps -a
-compose logs --tail=100 edge proxy websocket-service outbox-worker notification-inbox
+compose logs --tail=100 edge websocket-service outbox-worker notification-inbox
+compose exec -T edge caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 compose exec -T postgres pg_isready -U bootstrap_admin -d postgres
 compose exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --describe --topic orders.events.v1
+curl -sSI http://maistolovka.me/
+curl -sSI http://kitchen.maistolovka.me/
+curl -fsS -o /dev/null https://maistolovka.me/
 curl -fsS https://maistolovka.me/api/v1/menu/categories
+curl -sS -o /dev/null -w '%{http_code}\n' https://maistolovka.me/api/v1/users/auth/staff
+curl -sS -o /dev/null -w '%{http_code}\n' https://kitchen.maistolovka.me/
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  -H 'Content-Type: application/json' -d '{"update_id":1}' \
+  https://maistolovka.me/api/v1/users/internal/v1/telegram/webhook
 ```
 
-Verify HTTP redirects to HTTPS, certificate trust, client sign-in in Telegram, and a staff login
-and WSS upgrade from an approved network. Validate a complete order, preparation, READY
+Expect 308 on HTTP, trusted TLS on both hosts, and 404 for customer-origin staff login.
+Kitchen returns 200 from an approved source network and 403 outside the list. The exact
+webhook POST returns 404 when disabled and 403 without a secret when enabled.
+From an approved network, sign in to Kitchen as staff. In browser DevTools under Network → WS,
+verify a `101` for `wss://kitchen.maistolovka.me/api/v1/ws/kitchen` and check that a new order
+arrives over that connection. Verify client sign-in in Telegram. Validate a complete order,
+preparation, READY
 notification and issuance with a controlled account. An unauthenticated Kitchen socket upgrade
 alone does not verify authorization or realtime delivery. Check Kafka consumer groups and
 worker logs, including lag and failed dispatch. Disabled workers have no readiness endpoint.
@@ -153,8 +225,33 @@ maintenance window, take a verified backup, then deploy and rerun the smoke chec
 images only when the migrated schema remains compatible. For incompatible migrations, stop
 writes and follow the rehearsed restore or forward-fix plan. Preserve any orders created after
 the backup before making a state recovery decision. No auto-deploy workflow is enabled.
-An optional next CI step is Compose config and Caddy validation with generated fixture keys,
-followed by an isolated no-deploy smoke run on Linux.
+CI validates both Compose models and the production Caddyfile with fixture settings. The local
+Compose smoke suite checks API routing, the webhook boundary and the Kitchen WebSocket upgrade.
+
+### Roll back the proxy migration
+
+Record the exact previous release and keep it available. Back up PostgreSQL, Kafka and the
+production environment before deployment. This proxy migration adds no schema migration on
+top of `f0202c1`. Check schema compatibility when rolling back to another base.
+Run the previous release from its own checkout with the same production environment,
+Compose project and volume names.
+
+```sh
+# Set previous_release to the approved prior commit.
+git worktree add --detach ../mai-food-previous "$previous_release"
+(
+  cd ../mai-food-previous || exit
+  python3 infra/production/deploy.py --env-file "$env_file" check &&
+  python3 infra/production/deploy.py --env-file "$env_file" build &&
+  python3 infra/production/deploy.py --env-file "$env_file" deploy
+)
+```
+
+If the old release used live dispatch, pass `--telegram` to its build and deploy commands.
+For host Nginx, stop the new Compose `edge` to free ports 80/443, run `sudo nginx -t`,
+start Nginx, and restore the previous enabled state. Restore saved DNS records if the previous
+endpoint was elsewhere. Recheck HTTP, HTTPS, API and Kitchen from the approved network.
+Keep the PostgreSQL, Kafka and TLS volumes.
 
 For a coordinated recovery point, use a maintenance window. Stop ingress and writers,
 including the outbox, inbox, and dispatcher before exporting state. Store encrypted backups
@@ -201,7 +298,7 @@ peaks, live dispatch, and a sustained workload. It supports starting a measured 
 It does not qualify 4 GiB under load or prove cold builds fit. Check memory, OOM events,
 swap activity, disk headroom, and order latency before accepting a pilot.
 Kafka's Java heap is set to 256–512 MiB. The JVM also consumes non-heap memory. PostgreSQL
-uses 128 MiB shared buffers plus per-connection memory and cache. Static frontends use Nginx
+uses 128 MiB shared buffers plus per-connection memory and cache. Static frontends use Caddy
 at runtime, with Node only in the image build. The broker is capped at 1 GiB of retained data
 per partition, plus active segment and auxiliary overhead. Retention can expire unread data.
 Watch disk and lag. Use one VM and single replication for this pilot. Any VM, disk, or
@@ -213,7 +310,7 @@ documented headroom. Build off-VM or temporarily increase RAM if builds exceed t
 Compare region-specific VM hours, disk, public IP, backups and outbound traffic in Yandex's
 calculator before provisioning.
 
-## Local verification
+## Historical rehearsal before the Nginx removal
 
 The Docker builds, four migrations, Kafka topic provisioning and startup completed in
 isolated local Compose. With a disposable Caddy CA and loopback test ports, both frontend

@@ -150,13 +150,13 @@ services:
       dockerfile: apps/kitchen-app/Dockerfile
 
   proxy:
-    image: nginx:1.30.6-alpine
+    build: ./infra/caddy
     ports:
       - "127.0.0.1:${MINI_APP_PORT:-8080}:8080"
       - "127.0.0.1:${KITCHEN_APP_PORT:-8081}:8081"
     volumes:
-      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./infra/nginx/api-routes.conf:/etc/nginx/api-routes.conf:ro
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./infra/caddy/routes.caddy:/etc/caddy/routes.caddy:ro
     depends_on:
       user-service:
         condition: service_healthy

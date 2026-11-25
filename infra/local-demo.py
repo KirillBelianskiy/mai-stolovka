@@ -249,8 +249,6 @@ def main():
     if args.command == "up":
         run(COMPOSE + ["config", "--quiet"])
         run(COMPOSE + ["up", "-d", "--build", "--wait", "--wait-timeout", "300"])
-        # Nginx resolves upstream names at startup. A rebuild can change container IPs.
-        run(COMPOSE + ["up", "-d", "--no-deps", "--force-recreate", "--wait", "proxy"])
         for service in ["user-service", "menu-service", "order-service", "notification-service"]:
             run(
                 COMPOSE

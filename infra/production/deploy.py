@@ -151,16 +151,30 @@ def main():
             return
         for volume in VOLUMES.values():
             run("docker", "volume", "create", volume)
+        # Validate before interrupting the live edge. The one-off container publishes no ports.
+        compose(
+            "run",
+            "--rm",
+            "--no-deps",
+            "edge",
+            "caddy",
+            "validate",
+            "--config",
+            "/etc/caddy/Caddyfile",
+            "--adapter",
+            "caddyfile",
+        )
         compose("--profile", "telegram", "stop", "notification-dispatch")
         compose(
             "stop",
             "edge",
-            "proxy",
             "outbox-worker",
             "notification-inbox",
             "websocket-service",
             *DATABASES,
         )
+        # Older releases have an additional proxy container in the same Compose project.
+        compose("--profile", "local-development-only", "stop", "proxy")
         compose("up", "-d", "--wait", "--wait-timeout", "180", "postgres", "kafka")
         for service in DATABASES:
             compose(
@@ -201,6 +215,7 @@ def main():
             "--wait-timeout",
             "180",
             "edge",
+            "notification-service",
             "outbox-worker",
             "notification-inbox",
         )

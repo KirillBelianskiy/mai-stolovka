@@ -1,0 +1,24 @@
+(edge_http) {
+	encode zstd gzip
+	log {
+		format filter {
+			request>headers>X-Telegram-Bot-Api-Secret-Token delete
+			request>uri query {
+				delete token
+				delete access_token
+				delete initData
+			}
+		}
+	}
+	header -Server
+}
+
+(staff_login_limit) {
+	rate_limit {
+		zone staff_login {
+			key {remote_host}
+			events 10
+			window 1m
+		}
+	}
+}

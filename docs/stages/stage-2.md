@@ -8,7 +8,7 @@ remain excluded. Stage 1 verification evidence is historical, not the current AP
 
 OpenAPI snapshots are in `packages/contracts/openapi/`. CI tests compare each service's schema
 against its snapshot. After an intentional API change, run `python3 infra/export-api-contracts.py`
-and review the diff. API root prefixes are owned by NGINX and removed before routing upstream.
+and review the diff. API root prefixes are owned by Caddy and removed before routing upstream.
 Swagger is available at `/api/v1/users/docs` and `/api/v1/menu/docs` through either local origin.
 
 | Method and external path | Behavior |
@@ -40,7 +40,7 @@ admin edits is ordinary read-committed behavior, not a snapshot guarantee.
 
 401 means absent/invalid authentication, 403 means an insufficient role, 404 means no visible
 resource, 409 means a foreign-key/current-data conflict, 422 means invalid input, and 503 means
-an unavailable database or unconfigured authentication. NGINX may return 429 for staff-login
+an unavailable database or unconfigured authentication. Caddy may return 429 for staff-login
 rate limiting. Staff auth policy and token limitations are in `architecture/authentication.md`.
 
 ## Setup from an existing Stage 1 checkout
@@ -53,8 +53,8 @@ docker compose build user-service menu-service
 docker compose run --rm --no-deps --entrypoint /app/.venv/bin/alembic user-service upgrade head
 docker compose run --rm --no-deps --entrypoint /app/.venv/bin/alembic menu-service upgrade head
 docker compose up -d --wait user-service menu-service proxy
-docker compose exec -T proxy nginx -t
-docker compose exec -T proxy nginx -s reload
+docker compose exec -T proxy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker compose up -d --no-deps --force-recreate --wait proxy
 ```
 
 The auth helper runs once and refuses key replacement. Add a real `TELEGRAM_BOT_TOKEN` to ignored

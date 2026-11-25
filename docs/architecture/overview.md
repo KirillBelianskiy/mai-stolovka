@@ -17,13 +17,13 @@ See [authentication](authentication.md) and [Stage 3](../stages/stage-3.md).
 | WebSocket Service | Authorized employee connections and event delivery | FastAPI shell; future native WebSocket and Kafka consumer |
 | Telegram Mini App | Customer interaction and temporary cart state | Static Next.js export |
 | Kitchen App | Adaptive staff/admin interface, including Android tablets | Static Next.js export |
-| NGINX | Static-app routing, HTTP forwarding, future WebSocket upgrade | Reverse proxy only; no business logic |
+| Caddy | Static-app routing, HTTP forwarding, WebSocket upgrade | Reverse proxy only; no business logic |
 
 The estimated 1,000–2,000 HTTP requests/hour is a planning input, not a measured capacity claim. Five services follow the agreed architecture; no additional gateway, Redis, Kubernetes, gRPC, schema registry, or orchestration layer is introduced.
 
 ```mermaid
 flowchart LR
-  Customer[Telegram Mini App] --> Proxy[NGINX]
+  Customer[Telegram Mini App] --> Proxy[Caddy]
   Staff[Kitchen App] --> Proxy
   Proxy --> User[User Service]
   Proxy --> Menu[Menu Service]
@@ -39,7 +39,7 @@ flowchart LR
   Notification -. future aiogram sender .-> Telegram[Telegram Bot API]
 ```
 
-All client input is untrusted. Stage 2 validates Telegram initData/freshness, separately authenticates staff passwords, issues RS256 JWTs, and enforces User/Menu access. Order Service independently validates JWTs, roles and ownership. NGINX is not an authorization boundary. Internal network access is not sufficient authentication for privileged operations. Local JWT distribution uses environment-provided RSA public keys; production rotation and internal-service authentication remain open.
+All client input is untrusted. Stage 2 validates Telegram initData/freshness, separately authenticates staff passwords, issues RS256 JWTs, and enforces User/Menu access. Order Service independently validates JWTs, roles and ownership. Caddy is not an authorization boundary. Internal network access is not sufficient authentication for privileged operations. Local JWT distribution uses environment-provided RSA public keys; production rotation and internal-service authentication remain open.
 
 ## Local routing
 
@@ -51,11 +51,11 @@ All client input is untrusted. Stage 2 validates Telegram initData/freshness, se
 | `/api/v1/menu/…` | Menu Service; remove the prefix |
 | `/api/v1/orders/…` | Order Service; remove the prefix |
 | `/health/{user,menu,order,notification,websocket}/{live,ready}` | Operational health endpoints |
-| `/api/v1/ws/kitchen` | Reserved WebSocket route; currently rejected, no WS handler |
+| `/api/v1/ws/kitchen` | WebSocket Service; keep the full path |
 
 API routes are available on both origins. For example, `/api/v1/users/health/live` reaches the same endpoint as `/health/user/live`. Prefix stripping is intentional: future service routers must not repeat these external prefixes. Bare User/Menu prefixes redirect to their trailing-slash equivalents. The bare Order collection is forwarded directly, preserving POST requests. Unknown API paths return backend 404 responses, not frontend HTML.
 
-Each backend listens on container port 8000. Only NGINX, host PostgreSQL, and the Kafka external listener publish ports, all bound to localhost. Both frontends use relative API URLs when served through NGINX. Host Next.js dev servers run on 3000/3001; API integration through those origins is not configured in Stage 1.
+Each backend listens on container port 8000. Only Caddy, host PostgreSQL, and the Kafka external listener publish ports, all bound to localhost. Both frontends use relative API URLs when served through Caddy. Host Next.js dev servers run on 3000/3001; API integration through those origins is not configured in Stage 1.
 
 ## Runtime and development model
 

@@ -43,7 +43,7 @@ services:
   kitchen-app:
     <<: *production
   proxy:
-    <<: *production
+    profiles: [local-development-only]
     ports: !reset []
   outbox-worker:
     <<: *production
@@ -85,7 +85,7 @@ services:
       retries: 5
   edge:
     <<: *production
-    image: caddy:2.10.2-alpine
+    build: ./infra/caddy
     ports:
       - "80:80"
       - "443:443"
@@ -94,10 +94,21 @@ services:
       PROD_WEBHOOK_ENABLED: ${PROD_WEBHOOK_ENABLED:-false}
     volumes:
       - ./infra/production/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./infra/caddy/routes.caddy:/etc/caddy/routes.caddy:ro
       - tls-data:/data
       - tls-config:/config
     depends_on:
-      proxy:
+      user-service:
+        condition: service_healthy
+      menu-service:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+      websocket-service:
+        condition: service_healthy
+      telegram-mini-app:
+        condition: service_healthy
+      kitchen-app:
         condition: service_healthy
       customer-role:
         condition: service_healthy
