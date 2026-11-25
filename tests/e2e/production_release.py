@@ -212,7 +212,11 @@ volumes:
             LoopbackHTTPS, request, context=self.context
         )
         acceptance.build_opener = lambda *args: original(*args, handler)
-        return versions
+        version = self.run("exec", "-T", "edge", "caddy", "version")
+        modules = self.run("exec", "-T", "edge", "caddy", "list-modules", "--versions")
+        acceptance.require(version.startswith("v2.11.9"), "Caddy version drift")
+        acceptance.require("http.handlers.rate_limit v0.1.0" in modules, "limiter module drift")
+        return {"migrations": versions, "caddy": version, "rate_limit_module": "v0.1.0"}
 
     def request(self, method, path, expected, *, staff=False, body=None, headers=None):
         host = KITCHEN if staff else CUSTOMER
@@ -244,6 +248,238 @@ class Journey(acceptance.Journey):
         if expected == 200 and method == "PATCH" and body and body.get("status") == "READY":
             self.delivery()
         return result
+
+    def proxy_compatibility(self):
+        """Replay baseline Nginx configuration against identical upstreams and exports."""
+        stack = self.stack
+        baseline = "f0202c1a1924415018236a7641df7a9623adf0f8"
+        directory = stack.directory / "compatibility"
+        directory.mkdir()
+        nginx = directory / "nginx.conf"
+        routes = directory / "api-routes.conf"
+        static = directory / "static.conf"
+        for target, source in (
+            (nginx, "nginx.conf"),
+            (routes, "api-routes.conf"),
+            (static, "static.conf"),
+        ):
+            target.write_text(
+                acceptance.command(["git", "show", f"{baseline}:infra/nginx/{source}"])
+            )
+        nginx.write_text(
+            nginx.read_text()
+            .replace("telegram-mini-app:80", "legacy-customer:80")
+            .replace("kitchen-app:80", "legacy-kitchen:80")
+        )
+        exports = directory / "exports"
+        exports.mkdir()
+        for app in ("telegram-mini-app", "kitchen-app"):
+            destination = exports / app
+            destination.mkdir()
+            stack.run("cp", f"{app}:/srv/.", str(destination))
+        old_port, new_port, _, _ = acceptance.local_ports()
+        overlay = directory / "comparison.json"
+        overlay.write_text(
+            json.dumps(
+                {
+                    "services": {
+                        "proxy": {
+                            "ports": [
+                                {"target": 8080, "published": str(new_port), "host_ip": "127.0.0.1"}
+                            ]
+                        },
+                        "legacy-proxy": {
+                            "image": "nginx:1.30.6-alpine",
+                            "ports": [f"127.0.0.1:{old_port}:8080"],
+                            "volumes": [
+                                f"{nginx}:/etc/nginx/nginx.conf:ro",
+                                f"{routes}:/etc/nginx/api-routes.conf:ro",
+                            ],
+                        },
+                        **{
+                            name: {
+                                "image": "nginx:1.30.6-alpine",
+                                "volumes": [
+                                    f"{static}:/etc/nginx/conf.d/default.conf:ro",
+                                    f"{exports / app}:/usr/share/nginx/html:ro",
+                                ],
+                            }
+                            for name, app in (
+                                ("legacy-customer", "telegram-mini-app"),
+                                ("legacy-kitchen", "kitchen-app"),
+                            )
+                        },
+                    }
+                }
+            )
+        )
+        original = stack.compose[:]
+        stack.compose += ["-f", str(overlay)]
+        try:
+            stack.run("build", "proxy", timeout=300)
+            stack.run(
+                "up",
+                "-d",
+                "--no-build",
+                "--wait",
+                "legacy-customer",
+                "legacy-kitchen",
+                "legacy-proxy",
+                "proxy",
+                timeout=120,
+            )
+            observations = []
+            cases = [
+                ("GET", "/"),
+                ("HEAD", "/"),
+                ("GET", "/design/dishes/syrniki.jpg"),
+                ("GET", "/missing-static-file"),
+                ("GET", "/api/unknown"),
+                ("GET", "/api/v1/users"),
+                ("GET", "/api/v1/menu"),
+                ("GET", "/api/v1/users?preserve=1"),
+                ("GET", "/api/v1/menu/categories?limit=1"),
+                ("GET", "/api/v1/menu/items?limit=1&offset=0"),
+                ("POST", "/api/v1/menu/items"),
+                ("GET", "/api/v1/users/me"),
+                ("GET", "/api/v1/orders"),
+                ("GET", "/api/v1/orders/"),
+                ("GET", "/api/v1/orders/slots"),
+                ("GET", "/api/v1/orders/wallet"),
+                ("GET", "/api/v1/orders/not-implemented/unknown"),
+                ("GET", "/api/v1/users/internal/v1/notification-recipients/123"),
+                ("POST", "/api/v1/users/auth/staff"),
+            ]
+            for method, path in cases:
+                replies = []
+                for port in (old_port, new_port):
+                    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+                    connection.request(method, path)
+                    response = connection.getresponse()
+                    body = response.read()
+                    location = response.getheader("Location")
+                    # Nginx uses an absolute Location; Caddy uses a relative Location.
+                    if location:
+                        from urllib.parse import urlsplit
+
+                        parsed = urlsplit(location)
+                        location = (parsed.path, parsed.query)
+                    replies.append(
+                        (response.status, body, location, response.getheader("Content-Type"))
+                    )
+                    connection.close()
+                old, new = replies
+                acceptance.require(
+                    old[0] == new[0] and old[2] == new[2],
+                    f"proxy status/redirect drift: {method} {path}",
+                )
+                if old[3] == "application/json" or old[0] == 200:
+                    acceptance.require(old[1] == new[1], f"proxy body drift: {method} {path}")
+                observations.append(
+                    {
+                        "method": method,
+                        "path": path,
+                        "status": new[0],
+                        "body_equal": old[1] == new[1],
+                    }
+                )
+            return observations
+        finally:
+            stack.run(
+                "rm",
+                "-s",
+                "-f",
+                "proxy",
+                "legacy-proxy",
+                "legacy-customer",
+                "legacy-kitchen",
+                timeout=60,
+            )
+            stack.compose = original
+
+    def static_rollback(self):
+        stack = self.stack
+        artifacts = stack.directory / "compatibility/exports"
+        old, new = "a" * 40, "b" * 40
+        for revision in (old, new):
+            for app in ("telegram-mini-app", "kitchen-app"):
+                destination = artifacts / revision / app
+                destination.mkdir(parents=True)
+                (destination / "index.html").write_text(f"<html>{revision} {app}</html>")
+        port, _, _, _ = acceptance.local_ports()
+        overlay = stack.directory / "static-rollback.json"
+        overlay.write_text(
+            json.dumps(
+                {
+                    "services": {
+                        "staging-ingress": {
+                            "build": str(ROOT / "infra/caddy"),
+                            "ports": [f"127.0.0.1:{port}:8080"],
+                            "volumes": [
+                                f"{ROOT / 'infra/mac-staging/Caddyfile'}:/etc/caddy/Caddyfile:ro",
+                                f"{ROOT / 'infra/caddy/routes.caddy'}:/etc/caddy/routes.caddy:ro",
+                                f"{artifacts}:/srv:ro",
+                            ],
+                            "environment": {"STAGING_ARTIFACT_REVISION": old},
+                        }
+                    }
+                }
+            )
+        )
+        original = stack.compose[:]
+        stack.compose += ["-f", str(overlay)]
+        try:
+            stack.run("build", "staging-ingress", timeout=300)
+            stack.run(
+                "run",
+                "--rm",
+                "--no-deps",
+                "staging-ingress",
+                "caddy",
+                "validate",
+                "--config",
+                "/etc/caddy/Caddyfile",
+                "--adapter",
+                "caddyfile",
+            )
+            for revision in (old, new, old):
+                selection = stack.directory / "static-selection.json"
+                selection.write_text(
+                    json.dumps(
+                        {
+                            "services": {
+                                "staging-ingress": {
+                                    "environment": {"STAGING_ARTIFACT_REVISION": revision}
+                                }
+                            }
+                        }
+                    )
+                )
+                stack.compose += ["-f", str(selection)]
+                stack.run(
+                    "up", "-d", "--no-deps", "--force-recreate", "staging-ingress", timeout=60
+                )
+                deadline = time.monotonic() + 15
+                while True:
+                    try:
+                        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+                        connection.request("GET", "/")
+                        response = connection.getresponse()
+                        body = response.read().decode()
+                        connection.close()
+                        acceptance.require(
+                            response.status == 200 and revision in body,
+                            "static selection/rollback returned another artifact",
+                        )
+                        break
+                    except OSError:
+                        if time.monotonic() > deadline:
+                            raise
+                        time.sleep(0.2)
+                stack.compose = stack.compose[:-2]
+        finally:
+            stack.run("rm", "-s", "-f", "staging-ingress", timeout=60)
+            stack.compose = original
 
     def session_and_routes(self):
         stack = self.stack
@@ -303,7 +539,7 @@ class Journey(acceptance.Journey):
         )
         cookie = headers["Set-Cookie"]
         acceptance.require(
-            all(flag in cookie for flag in ("Secure", "HttpOnly", "SameSite=lax")),
+            all(flag in cookie for flag in ("Secure", "HttpOnly", "SameSite=strict")),
             "session cookie flags",
         )
         acceptance.require(headers.get("Cache-Control") == "no-store", "login cache policy")
@@ -471,6 +707,7 @@ class Journey(acceptance.Journey):
         connection.sock.sendall(
             header + mask + bytes(value ^ mask[index % 4] for index, value in enumerate(payload))
         )
+        connection._ws_response = response
         return connection, response.fp
 
     @staticmethod
@@ -635,6 +872,8 @@ def main():
             ("isolated production model", stack.configure),
             ("pinned images and modules", stack.build),
             ("validated edge and fresh migrations", stack.start),
+            ("baseline Nginx and Caddy compatibility", journey.proxy_compatibility),
+            ("Mac static artifact rollback", journey.static_rollback),
             ("synthetic login", journey.login),
             ("TLS routes and customer session", journey.session_and_routes),
             ("webhook flag, secret and replay", journey.webhook),

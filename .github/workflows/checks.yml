@@ -92,6 +92,13 @@ jobs:
         run: >-
           docker compose -f docker-compose.yml -f docker-compose.prod.yml
           --profile outbox --profile inbox --profile telegram config --quiet
+      - name: Validate local demo and Mac staging Compose models
+        env:
+          STAGING_CUSTOMER_ORIGIN: http://localhost:18280
+          STAGING_KITCHEN_ORIGIN: http://localhost:18281
+        run: |
+          docker compose -f docker-compose.yml -f compose.local-demo.yml config --quiet
+          docker compose -f docker-compose.yml -f compose.mac-staging.yml --profile outbox --profile inbox config --quiet
       - run: docker compose up --build --wait --wait-timeout 300
       - name: Validate production Caddyfile
         run: |
@@ -122,6 +129,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Fetch the immutable compatibility baseline
+        run: git fetch --no-tags --depth=1 origin f0202c1a1924415018236a7641df7a9623adf0f8
       - name: Exercise isolated production routes with local TLS and fake Telegram
         run: python tests/e2e/production_release.py --output "$RUNNER_TEMP/production-release.json"
       - name: Upload sanitized exact-revision evidence
