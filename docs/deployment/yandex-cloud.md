@@ -17,7 +17,7 @@ Production leaves the local HTTP proxy disabled.
 
 The production Caddyfile enables ACME, renewal, HTTP redirects, zstd/gzip, and access logs.
 The existing TLS volumes back `/data` and `/config`. Access logs omit the Telegram webhook
-secret header and known token query parameters. The public URL allowlists, Kitchen source
+secret header, Authorization, Cookie, Set-Cookie, Referer, and known token/initData query parameters. The public URL allowlists, Kitchen source
 CIDRs, 128 kB body limit, forwarding header cleanup and client role check stay in effect.
 Caddy adds its own client IP, host and scheme forwarding headers.
 
@@ -148,7 +148,7 @@ sudo systemctl is-enabled nginx
 
 If host Nginx owns either port, identify its sites and save its configuration and service state.
 If it serves MAI Food only, run `sudo systemctl stop nginx` in the cutover window after the
-build. Disable it with `sudo systemctl disable nginx` after the new deployment passes the
+build and Caddy validation succeed. Disable it with `sudo systemctl disable nginx` after the new deployment passes the
 checks below. If other sites share the listeners, coordinate their migration first. For the
 existing Compose setup, the launcher stops the previous proxy and reuses the same TLS volumes.
 
@@ -156,6 +156,8 @@ existing Compose setup, the launcher stops the previous proxy and reuses the sam
 env_file="$HOME/.config/mai-food/production.env"
 python3 infra/production/deploy.py --env-file "$env_file" check
 python3 infra/production/deploy.py --env-file "$env_file" build
+python3 infra/production/deploy.py --env-file "$env_file" validate
+# At this point, stop the old host ingress if applicable.
 # Run in the approved cutover window.
 python3 infra/production/deploy.py --env-file "$env_file" deploy
 python3 infra/production/deploy.py --env-file "$env_file" status
@@ -166,7 +168,9 @@ and project name on a larger Linux runner with the same CPU architecture as the 
 non-production fixture keys for configuration validation there. Transfer only the built Docker
 images with `docker image save` / `docker image load` before deploying on the VM. Keep images available for the rollback window. Pass `--telegram` to both build and deploy when
 explicitly activating real dispatch. A normal redeploy stops an existing dispatcher.
-The launcher keeps the external volumes, stops application traffic and workers during
+The `validate` command checks the built Caddy configuration without publishing ports. The launcher
+validates again before it stops existing Compose services. It keeps the external volumes,
+stops application traffic and workers during
 migration, waits for PostgreSQL and Kafka, upgrades all four Alembic schemas, provisions the
 order topic, then starts the services and workers. On an error, inspect the failed phase before
 repeating deployment. The launcher never runs `down -v`.
@@ -309,6 +313,23 @@ space before builds and upgrades. Treat 20 GiB as an option only with prebuilt i
 documented headroom. Build off-VM or temporarily increase RAM if builds exceed the VM budget.
 Compare region-specific VM hours, disk, public IP, backups and outbound traffic in Yandex's
 calculator before provisioning.
+
+## Repository release gate
+
+The `production-release` GitHub Actions job runs `tests/e2e/production_release.py` on the
+checked-out revision. It generates temporary keys, synthetic identities and disposable volumes.
+Only random IPv4 loopback HTTP/TLS ports are published; PostgreSQL and Kafka stay internal.
+The TLS issuer is changed to a local CA while every production route comes from the actual
+production Caddyfile. Certificate and hostname verification remain enabled. No public DNS,
+ACME, real Telegram account or production secret is used. The fake dispatcher cannot receive
+a real bot token. Reports are sanitized and uploaded as workflow artifacts.
+
+The gate compares baseline Nginx routes with Caddy against the same backends/exports, verifies
+Mac static artifact switching and rollback, cookie restoration/logout, private APIs, roles,
+wallet/booking replay and refund, webhook flag/secret/replay, staff login rolling limit,
+network denial, authenticated WSS reconnect and Kafka hints, one fake READY delivery, and
+an upgrade over the same disposable volumes. See [release evidence](../verification-caddy-release.md)
+for exact revision and results. This gate does not qualify the public VM or real-device rollout.
 
 ## Historical rehearsal before the Nginx removal
 

@@ -1,10 +1,15 @@
 # MAI Food
 
-Stage 3 backend foundation for cafeteria preorders: authenticated users, menu administration,
-transactional orders, capacity-controlled slots, immutable price snapshots, idempotency,
-role-based lifecycle changes, and persisted Outbox events. Kafka/Telegram delivery and complete
-frontend flows remain deferred. Both Russian-language screens are placeholders.
-See [Stage 3 setup and APIs](docs/stages/stage-3.md) and [Stage 2 authentication](docs/stages/stage-2.md).
+MAI Food is a cafeteria preorder MVP with a Russian Telegram Mini App and staff Kitchen app.
+Five independent services provide Telegram login and browser sessions, menu management,
+capacity-controlled booking, an optional demo wallet, staff preparation and issuance, durable
+READY notifications, and authenticated Kitchen WebSocket hints. REST remains authoritative.
+Caddy serves both static exports and proxies the same-origin APIs.
+
+For the final GitHub release gate, see [Caddy release verification](docs/verification-caddy-release.md).
+For VM deployment, use [the Yandex runbook](docs/deployment/yandex-cloud.md). Public DNS,
+certificates, live Telegram rollout, and pilot operations are separate deployment steps.
+The stage documents retain historical implementation evidence.
 
 ## Project layout
 
@@ -12,7 +17,7 @@ See [Stage 3 setup and APIs](docs/stages/stage-3.md) and [Stage 2 authentication
 apps/{telegram-mini-app,kitchen-app}     Independent static Next.js applications
 services/{user,menu}-service             Authentication/profile and menu APIs
 services/order-service                  Transactional orders, slots, and persisted Outbox
-services/{notification,websocket}-service  Process-only FastAPI shells
+services/{notification,websocket}-service  Durable delivery and authenticated staff hints
 packages/contracts                     Language-neutral event schemas and examples
 infra/{postgres,caddy}                 Local provisioning and reverse proxy configuration
 docs/architecture                      Boundaries, consistency design, open decisions
@@ -26,7 +31,8 @@ Start with [architecture overview](docs/architecture/overview.md),
 [order lifecycle](docs/architecture/order-lifecycle.md),
 [events](docs/architecture/events.md), and
 [open decisions](docs/architecture/open-questions.md).
-See [Stage 3 verification](docs/verification-stage3.md) for current checks,
+See [Caddy release verification](docs/verification-caddy-release.md) for current gates,
+[Stage 3 verification](docs/verification-stage3.md),
 [Stage 2 verification](docs/verification-stage2.md) and
 [Stage 1 evidence](docs/verification.md) for the historical bootstrap.
 
@@ -58,9 +64,10 @@ docker compose up --build --wait --wait-timeout 300
 docker compose run --rm --no-deps --entrypoint /app/.venv/bin/alembic user-service upgrade head
 docker compose run --rm --no-deps --entrypoint /app/.venv/bin/alembic menu-service upgrade head
 docker compose run --rm --no-deps --entrypoint /app/.venv/bin/alembic order-service upgrade head
+docker compose run --rm --no-deps --entrypoint /app/.venv/bin/alembic notification-service upgrade head
 ```
 
-The environment helper creates an ignored `.env` with four independent random local passwords and
+The environment helper creates an ignored `.env` with five independent random local passwords and
 refuses to overwrite an existing file. Alternatively, copy `.env.example` and fill every empty
 password using separate `openssl rand -hex 24` outputs. Use hexadecimal passwords because Compose
 embeds service credentials in database URLs. `.env.example` contains no credentials. Never commit
@@ -75,9 +82,10 @@ for deployment.
 - Kafka host bootstrap: `localhost:9092`; container bootstrap: `kafka:29092`
 
 Ports can be changed in `.env`. Both app origins expose the API prefixes described in the
-architecture overview. The reserved `/api/v1/ws/kitchen` path currently rejects requests; there is
-no unauthenticated order stream. PostgreSQL-backed readiness uses a bounded database query;
-notification/WebSocket readiness currently proves only that the HTTP process is running.
+architecture overview. Kitchen WebSocket connections require an allowed Origin and a staff JWT
+in the first message. PostgreSQL-backed readiness uses bounded database queries. With Kafka
+hints enabled, WebSocket readiness also requires its consumer assignment; an HTTP 200 alone
+does not prove notification delivery.
 
 ```sh
 docker compose ps
@@ -100,8 +108,8 @@ No Kafka consumers or workers are started by the default stack. Order Service pe
 PostgreSQL; the explicit opt-in Outbox worker can publish them after topic provisioning. Read
 [the worker instructions](docs/stages/stage-4-outbox.md) before launch. The
 [development topic tool](docs/stages/stage-4-topic-operations.md) plans explicit provisioning
-and checks existing settings; SCRUM-18 consumer integration remains incomplete. Telegram access
-will require an HTTPS-accessible deployment and bot interaction permissions in a later stage.
+and checks existing settings. Production and Mac staging launch the reviewed workers explicitly.
+Real Telegram access requires HTTPS, bot configuration, and recipient permission.
 
 For the isolated Mac deployment workstream, see [Mac staging](docs/deployment/mac-staging.md).
 
@@ -132,13 +140,14 @@ deferred; running through Compose gives same-origin proxy routing.
 
 ### Migrations
 
-User, Menu, and Order have initial schema revisions. Run migrations
+User, Menu, Order, and Notification have explicit schema revisions. Run migrations
 explicitly before using the APIs; they never execute in application startup:
 
 ```sh
 docker compose run --rm --no-deps --entrypoint /app/.venv/bin/alembic user-service upgrade head
 docker compose run --rm --no-deps --entrypoint /app/.venv/bin/alembic menu-service upgrade head
 docker compose run --rm --no-deps --entrypoint /app/.venv/bin/alembic order-service upgrade head
+docker compose run --rm --no-deps --entrypoint /app/.venv/bin/alembic notification-service upgrade head
 ```
 
 For host development, set the matching `APP_DATABASE_URL` and run `uv run --frozen alembic upgrade
@@ -197,7 +206,6 @@ stays private and ignored; the generator source is preserved unchanged.
 - Re-run `uv lock` within the owning service only when intentionally changing dependencies; use
   `npm install` at the root for deliberate frontend dependency changes and review the lockfile.
 
-User/Menu/Order backends are implemented. Next agree event delivery/retry and Telegram permission
-contracts, implement the Outbox relay and durable Notification processing, then authenticated
-WebSocket delivery and frontend integration. The detailed decision register is in
-`docs/architecture/open-questions.md`.
+The current release preserves the approved role and order policies. The remaining operational
+steps, including live Telegram and recovery acceptance, are documented in the Yandex runbook
+and [pilot readiness runbook](docs/deployment/operations/readiness-runbook.md).

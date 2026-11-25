@@ -2,6 +2,12 @@
 
 Use a dedicated worktree on the Mac and an already installed Docker Desktop with Compose 2.24.4 or later. The host build uses Python 3.12, OpenSSL, Git, and Node.js 22 with npm. The tested starting point is frontend commit `585f6147dc2c6fca6301d6e6339afd10f4991944` (PR #58).
 
+The ingress now uses the same pinned Caddy 2.11.9 and rate-limit module 0.1.0 build as
+production. Staff login alone has a 10-request rolling-minute limit; other API operations
+remain outside that limiter. Access logs remove credentials and launch data. Immutable
+artifact directories and explicit `STAGING_ARTIFACT_REVISION` selection are preserved.
+The production release CI also rehearses old → new → old static artifact selection.
+
 ## Start and verify
 
 Run from the root of the staging worktree.

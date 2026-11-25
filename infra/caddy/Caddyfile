@@ -10,7 +10,10 @@ import routes.caddy
 	}
 	@private path /api/v1/users/internal/v1/notification-recipients /api/v1/users/internal/v1/notification-recipients/*
 	respond @private 404
-	@staff_login path /api/v1/users/auth/staff
+	@staff_login {
+		method POST
+		path /api/v1/users/auth/staff
+	}
 	handle @staff_login {
 		route {
 			import staff_login_limit

@@ -4,7 +4,16 @@ Status: preparation draft; not an authorization to run a pilot, change productio
 
 This runbook distinguishes repository/local evidence from operational acceptance. A green CI run or a local Compose stack does not establish production routing, backup coverage, alert delivery, or recovery readiness.
 
-## Current readiness and evidence boundary
+## GitHub release scope — 2026-11-25
+
+PR #67 integrates the final MVP and Caddy migration. The current repository gate and exact
+candidate evidence are recorded in [Caddy release verification](../../verification-caddy-release.md).
+It includes a disposable local-TLS/fake-Telegram stack and same-volume upgrade rehearsal.
+These synthetic checks do not constitute live pilot, public DNS/ACME, real Telegram, off-VM
+backup restore, measured RPO/RTO, load qualification, or owner-approved rollout evidence.
+The dated sections below preserve the earlier operational planning record.
+
+## Historical readiness and evidence boundary — 2026-11-04
 
 As of 2026-11-04, implementation is distributed across open pull requests with separate review and integration gates. The relevant work is not yet an integrated release candidate. The following evidence exists, but does not by itself establish pilot readiness:
 

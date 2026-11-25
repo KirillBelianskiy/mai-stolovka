@@ -92,7 +92,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--env-file", required=True, type=Path)
     parser.add_argument("--telegram", action="store_true", help="enable approved live delivery")
-    parser.add_argument("action", choices=("check", "build", "deploy", "status"))
+    parser.add_argument("action", choices=("check", "build", "validate", "deploy", "status"))
     args = parser.parse_args()
     path = args.env_file.resolve()
     fields = configuration(path, args.telegram)
@@ -164,6 +164,8 @@ def main():
             "--adapter",
             "caddyfile",
         )
+        if args.action == "validate":
+            return
         compose("--profile", "telegram", "stop", "notification-dispatch")
         compose(
             "stop",

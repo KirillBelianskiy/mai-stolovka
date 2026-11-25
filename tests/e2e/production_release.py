@@ -12,6 +12,7 @@ import struct
 import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from urllib.parse import urlsplit
 from urllib.request import HTTPSHandler
 
 import mvp_acceptance as acceptance
@@ -290,6 +291,7 @@ class Journey(acceptance.Journey):
                         },
                         "legacy-proxy": {
                             "image": "nginx:1.30.6-alpine",
+                            "depends_on": ["legacy-customer", "legacy-kitchen"],
                             "ports": [f"127.0.0.1:{old_port}:8080"],
                             "volumes": [
                                 f"{nginx}:/etc/nginx/nginx.conf:ro",
@@ -340,6 +342,7 @@ class Journey(acceptance.Journey):
                 ("GET", "/api/v1/users?preserve=1"),
                 ("GET", "/api/v1/menu/categories?limit=1"),
                 ("GET", "/api/v1/menu/items?limit=1&offset=0"),
+                ("GET", "/api/v1/menu/items?limit=-1"),
                 ("POST", "/api/v1/menu/items"),
                 ("GET", "/api/v1/users/me"),
                 ("GET", "/api/v1/orders"),
@@ -360,8 +363,6 @@ class Journey(acceptance.Journey):
                     location = response.getheader("Location")
                     # Nginx uses an absolute Location; Caddy uses a relative Location.
                     if location:
-                        from urllib.parse import urlsplit
-
                         parsed = urlsplit(location)
                         location = (parsed.path, parsed.query)
                     replies.append(
@@ -371,7 +372,7 @@ class Journey(acceptance.Journey):
                 old, new = replies
                 acceptance.require(
                     old[0] == new[0] and old[2] == new[2],
-                    f"proxy status/redirect drift: {method} {path}",
+                    f"proxy status/redirect drift: {method} {path} ({old[0]} vs {new[0]})",
                 )
                 if old[3] == "application/json" or old[0] == 200:
                     acceptance.require(old[1] == new[1], f"proxy body drift: {method} {path}")
@@ -822,10 +823,11 @@ asyncio.run(main())
         self.delivery()
 
     def logs(self):
+        probe = "release-log-probe"
         marker = "release-sensitive-" + secrets.token_hex(12)
         self.stack.request(
             "GET",
-            "/?token="
+            f"/?probe={probe}&token="
             + marker
             + "&access_token="
             + marker
@@ -842,7 +844,8 @@ asyncio.run(main())
         )
         logs = self.stack.run("logs", "--no-log-prefix", "edge")
         acceptance.require(
-            marker not in logs
+            probe in logs
+            and marker not in logs
             and self.stack.secret not in logs
             and self.stack.token not in logs
             and all(token not in logs for token in self.tokens.values()),
@@ -907,8 +910,12 @@ def main():
             # Never publish raw service logs, substituted config, credentials, or launch data.
             print(f"Failed stage: {name} ({type(error).__name__})", flush=True)
         finally:
-            stack.run("down", "--volumes", "--remove-orphans", timeout=120)
-            report["cleanup"] = "pass"
+            try:
+                stack.run("down", "--volumes", "--remove-orphans", timeout=120)
+                report["cleanup"] = "pass"
+            except Exception as error:
+                failed = True
+                report["cleanup"] = type(error).__name__
             report["passed"] = not failed
             args.output.write_text(json.dumps(report, indent=2) + "\n")
     return int(failed)
