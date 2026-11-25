@@ -1,0 +1,288 @@
+"use client";
+
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { ArrowDown, Plus, Send, UserRound } from "lucide-react";
+import { useLayoutEffect, useRef, useState, type ReactNode, type TouchEvent } from "react";
+import { ART, CAMPUS } from "@/components/customer-ui";
+import { DishPhoto } from "@/components/dish-photo";
+import {
+  MAX_INTEGER, loadCategories, loadItems, money, type CartLine, type MenuItem,
+} from "@/lib/menu";
+
+type Position = {
+  top: number;
+  anchor: string | undefined;
+  offset: number;
+  shelves: Record<string, number>;
+};
+
+type Props = {
+  active: boolean;
+  openDish: (item: MenuItem) => void;
+  openProfile: () => void;
+  cart: CartLine[];
+  canAdd: boolean;
+  add: (item: MenuItem) => boolean;
+  feedback: string;
+  dock: ReactNode;
+};
+
+export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, feedback, dock }: Props) {
+  const [category, setCategory] = useState<string | null>(null);
+  const feed = useRef<HTMLElement>(null);
+  const hero = useRef<HTMLDivElement>(null);
+  const rail = useRef<HTMLElement>(null);
+  const profile = useRef<HTMLButtonElement>(null);
+  const positions = useRef(new Map<string | null, Position>());
+  const pendingPosition = useRef<Position | null>(null);
+  const returnFocus = useRef<string | "profile" | null>(null);
+  const gesture = useRef<{ x: number; y: number } | null>(null);
+  const categories = useQuery({
+    queryKey: ["menu-categories"],
+    queryFn: ({ signal }) => loadCategories(signal), retry: 1,
+  });
+  const menu = useInfiniteQuery({
+    queryKey: ["menu-items", category],
+    initialPageParam: 0,
+    queryFn: ({ pageParam, signal }) => loadItems(category, pageParam, signal),
+    getNextPageParam: (page) =>
+      page.items.length > 0 && page.offset + page.items.length < page.total
+        ? page.offset + page.items.length
+        : undefined,
+    gcTime: Infinity,
+    staleTime: 30000,
+    retry: 1,
+  });
+  const items = [
+    ...new Map(menu.data?.pages.flatMap((page) => page.items).map((item) => [item.id, item])).values(),
+  ];
+  const options = [{ id: null, name: "На обед" }, ...(categories.data ?? [])];
+  const featured = items.filter((item) => item.is_available).slice(0, 3);
+  const sections = (categories.data ?? []).flatMap(({ id, name }) => {
+    const matching = items.filter((item) => item.category_id === id);
+    return matching.length ? [{ id, name, items: matching }] : [];
+  });
+  const unsorted = items.filter((item) => !categories.data?.some(({ id }) => id === item.category_id));
+  if (unsorted.length) sections.push({ id: "catalog", name: "Меню", items: unsorted });
+  const filterTitle = options.find(({ id }) => id === category)?.name ?? "Меню";
+
+  function measure() {
+    if (!feed.current || !hero.current || !rail.current) return;
+    const top = feed.current.scrollTop;
+    const distance = Math.max(1, hero.current.offsetHeight - rail.current.clientTop);
+    const progress = Math.min(1, top / distance);
+    hero.current.style.setProperty("--cover-progress", String(progress));
+    const offset = Number.parseFloat(getComputedStyle(rail.current).top) || 0;
+    rail.current.dataset.pinned = String(top >= distance - offset - 1);
+  }
+
+  function recordPosition(): Position | null {
+    const viewport = feed.current;
+    if (!viewport) return null;
+    const left = viewport.getBoundingClientRect().left;
+    const right = viewport.getBoundingClientRect().right;
+    const top = rail.current?.getBoundingClientRect().bottom ?? 0;
+    const candidates = [...viewport.querySelectorAll<HTMLElement>("[data-feed-card]")];
+    const anchor = candidates.find((card) => {
+      const rect = card.getBoundingClientRect();
+      return rect.bottom > top && rect.right > left && rect.left < right;
+    });
+    const shelves = Object.fromEntries(
+      [...viewport.querySelectorAll<HTMLElement>("[data-scroll-key]")].map(
+        (shelf) => [shelf.dataset.scrollKey!, shelf.scrollLeft],
+      ),
+    );
+    return {
+      top: viewport.scrollTop,
+      anchor: anchor?.dataset.feedCard,
+      offset: anchor?.getBoundingClientRect().top ?? 0,
+      shelves,
+    };
+  }
+
+  function switchCategory(id: string | null) {
+    if (id === category) return;
+    const current = recordPosition();
+    if (current) positions.current.set(category, current);
+    const top = Number.parseFloat(rail.current ? getComputedStyle(rail.current).top : "") || 0;
+    const pinned = Math.max(0, (hero.current?.offsetHeight ?? 0) - top);
+    pendingPosition.current = positions.current.get(id) ?? {
+      top: pinned, anchor: undefined, offset: 0, shelves: {},
+    };
+    setCategory(id);
+  }
+
+  function visit(key: string, action: () => void) {
+    const position = recordPosition();
+    if (position) positions.current.set(category, position);
+    returnFocus.current = key;
+    action();
+  }
+
+  useLayoutEffect(() => {
+    if (!active || !feed.current) return;
+    const viewport = feed.current;
+    const position = pendingPosition.current ?? (returnFocus.current ? positions.current.get(category) : null);
+    if (position && !menu.isPending) {
+      for (const shelf of viewport.querySelectorAll<HTMLElement>("[data-scroll-key]")) {
+        const saved = position.shelves[shelf.dataset.scrollKey!];
+        if (saved !== undefined) shelf.scrollLeft = saved;
+      }
+      viewport.scrollTop = position.top;
+      // The cover scrolls behind a sticky rail. Only use a card anchor in the feed.
+      if (position.top > (hero.current?.offsetHeight ?? 0) / 2) {
+        const anchor = [...viewport.querySelectorAll<HTMLElement>("[data-feed-card]")]
+          .find((card) => card.dataset.feedCard === position.anchor);
+        if (anchor) viewport.scrollTop += anchor.getBoundingClientRect().top - position.offset;
+      }
+      pendingPosition.current = null;
+    }
+    if (returnFocus.current && !menu.isPending) {
+      const key = returnFocus.current;
+      const cards = [...viewport.querySelectorAll<HTMLElement>("[data-feed-card]")];
+      const picked = key === "profile" ? profile.current : cards.find((card) => card.dataset.feedCard === key);
+      const nearest = cards.find((card) => card.getBoundingClientRect().bottom > (rail.current?.getBoundingClientRect().bottom ?? 0));
+      (picked ?? nearest ?? viewport.querySelector<HTMLElement>("#menu-heading"))?.focus({ preventScroll: true });
+      returnFocus.current = null;
+    }
+    if (rail.current) {
+      const pressed = rail.current.querySelector("button[aria-pressed='true']");
+      if (pressed instanceof HTMLElement) {
+        const strip = rail.current;
+        const button = pressed.getBoundingClientRect();
+        const bounds = strip.getBoundingClientRect();
+        if (button.right > bounds.right) strip.scrollLeft += button.right - bounds.right + 16;
+        if (button.left < bounds.left) strip.scrollLeft += button.left - bounds.left - 16;
+      }
+    }
+    measure();
+  }, [active, category, menu.isPending, menu.data]);
+
+  function startSwipe(event: TouchEvent) {
+    const target = event.target;
+    const touch = event.touches[0];
+    gesture.current = event.touches.length === 1 && target instanceof Element &&
+      !target.closest("[data-scroll-key], button, a, input") ? { x: touch.clientX, y: touch.clientY } : null;
+  }
+  function finishSwipe(event: TouchEvent) {
+    const start = gesture.current;
+    gesture.current = null;
+    if (!start || event.touches.length !== 0) return;
+    const touch = event.changedTouches[0];
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.7) return;
+    const index = options.findIndex(({ id }) => id === category);
+    const next = options[index + (dx < 0 ? 1 : -1)];
+    if (next) switchCategory(next.id);
+  }
+
+  const shelf = (id: string, list: MenuItem[], compact = false) => (
+    <div className={compact ? "food-shelf featured-shelf" : "food-shelf catalog-shelf"} data-scroll-key={id}>
+      {list.map((item) => {
+        const count = cart.find((line) => line.id === item.id)?.quantity ?? 0;
+        const key = id + "/" + item.id;
+        return (
+          <article className="food-card" key={item.id}>
+            <button className="food-card-body" data-feed-card={key}
+              aria-label={"Подробнее: " + item.name + ", " + money(item.price)}
+              onClick={() => visit(key, () => openDish(item))}>
+              <DishPhoto item={item} />
+              <strong>{item.name}</strong>
+              <span>{money(item.price)}</span>
+            </button>
+            <button className="food-card-add"
+              aria-label={"Добавить " + item.name + " в корзину" + (count ? ", в корзине " + count : "")}
+              disabled={!item.is_available || !canAdd || count >= MAX_INTEGER}
+              onClick={() => add(item)}
+            >
+              <span>{count || <Plus size={16} aria-hidden="true" />}</span>
+            </button>
+            {!item.is_available && <p className="food-unavailable">Недоступно</p>}
+          </article>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <div className="menu-view" hidden={!active}>
+      <section ref={feed} className={"menu-feed" + (dock ? " has-dock" : "")} aria-label="Меню столовой"
+        onScroll={measure} onTouchStart={startSwipe} onTouchEnd={finishSwipe}
+        onTouchCancel={() => { gesture.current = null; }}>
+        <div ref={hero} className="menu-cover">
+          {menu.isPending && category === null ? <div className="cover-skeleton" aria-hidden="true" /> : (
+            <div className="cover-art" style={{ backgroundImage: "url(" + ART + "/" + "orbit-cover.jpg" + ")" }} />
+          )}
+          <header className="menu-header">
+            <Send size={29} strokeWidth={1.5} aria-hidden="true" />
+            <div><strong>{CAMPUS}</strong>
+              <button ref={profile} className="round-button" aria-label="Профиль"
+                onClick={() => visit("profile", openProfile)}>
+                <UserRound size={22} aria-hidden="true" />
+              </button>
+            </div>
+          </header>
+          <p className="cover-caption"><strong>Меню столовой МАИ</strong></p>
+        </div>
+        <nav ref={rail} data-scroll-key="categories" className="category-rail" aria-label="Категории блюд">
+          {options.map(({ id, name }) => (
+            <button key={id ?? "all"} aria-pressed={id === category} onClick={() => switchCategory(id)}>
+              {name}
+            </button>
+          ))}
+        </nav>
+        <div className="feed-content">
+          <h1 id="menu-heading" tabIndex={-1}>{category === null ? "Что на обед?" : filterTitle}</h1>
+          {categories.isError && (
+            <div className="feed-feedback" role="status">
+              Категории пока недоступны.
+              <button className="text-button" onClick={() => void categories.refetch()}>Повторить загрузку категорий</button>
+            </div>
+          )}
+          {feedback && <p className="feed-feedback" role="status">{feedback}</p>}
+          {menu.isPending ? (
+            <div role="status" aria-label="Загружаем меню" className="shelf-skeleton">
+              <span /><span /><span />
+            </div>
+          ) : menu.isError && !items.length ? (
+            <div className="feed-state" role="alert">
+              <div className="state-art plane-art" />
+              <h2>Меню не загрузилось</h2>
+              <button className="primary-button" onClick={() => void menu.refetch()}>Повторить</button>
+            </div>
+          ) : items.length === 0 ? (
+            <div className="feed-state">
+              <div className="state-art plane-art" />
+              <h2>Здесь пока нет блюд</h2>
+              <p>{category ? "Посмотрите другие категории." : "Загляните позже."}</p>
+              {category && <button className="text-button" onClick={() => switchCategory(null)}>На обед</button>}
+            </div>
+          ) : category === null ? (
+            <>
+              {featured.length > 0 && shelf("featured", featured, true)}
+              {sections.map((section) => (
+                <section className="food-section" key={section.id}>
+                  <h2>{section.name}</h2>
+                  {shelf(section.id, section.items)}
+                </section>
+              ))}
+            </>
+          ) : shelf(category, items)}
+          {menu.isError && items.length > 0 && (
+            <p role="alert">Не удалось обновить меню.{" "}
+              <button className="text-button" onClick={() => void menu.refetch()}>Повторить</button>
+            </p>
+          )}
+          {menu.hasNextPage && (
+            <button className="text-button load-more" disabled={menu.isFetching}
+              onClick={() => void menu.fetchNextPage()}>
+              {menu.isFetchingNextPage ? "Загружаем…" : "Ещё блюда"}<ArrowDown size={16} aria-hidden="true" />
+            </button>
+          )}
+        </div>
+      </section>
+      {dock}
+    </div>
+  );
+}

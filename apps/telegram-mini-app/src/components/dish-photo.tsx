@@ -1,38 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { Utensils } from "lucide-react";
 import { imageUrl, type MenuItem } from "@/lib/menu";
+import { ART } from "@/components/customer-ui";
 
-export function DishPhoto({
-  item,
-}: {
-  item: Pick<MenuItem, "name" | "image_url">;
+export function DishPhoto({ item, eager = false }: {
+  item: Pick<MenuItem, "image_url">;
+  eager?: boolean;
 }) {
   const source = imageUrl(item.image_url);
   const [failedSource, setFailedSource] = useState<string | null>(null);
-  const available = source && source !== failedSource;
+  const photo = source && source !== failedSource ? source : undefined;
 
   return (
-    <span className="dish-photo">
-      {available ? (
-        <img
-          src={source}
-          alt=""
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          onError={() => setFailedSource(source)}
-        />
-      ) : (
-        <span
-          className="photo-unavailable"
-          role="img"
-          aria-label={`Фото блюда «${item.name}» недоступно`}
-        >
-          <Utensils size={28} aria-hidden="true" />
-          <small>Фото пока нет</small>
-        </span>
-      )}
+    <span className="dish-photo" data-product-photo={Boolean(photo)}>
+      <img
+        src={photo ?? ART + "/plate.svg"}
+        alt=""
+        loading={eager ? "eager" : "lazy"}
+        referrerPolicy="no-referrer"
+        onError={() => { if (photo) setFailedSource(photo); }}
+      />
     </span>
   );
 }

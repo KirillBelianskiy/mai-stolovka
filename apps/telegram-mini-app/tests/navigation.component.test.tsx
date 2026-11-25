@@ -1,48 +1,61 @@
 import { useState } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MenuApp } from "../src/components/menu-app";
+import { AuthProvider } from "@/components/auth-provider";
+import { MenuApp } from "@/components/menu-app";
+import { CART_KEY } from "@/lib/menu";
 
 vi.mock("@/components/order-workspace", () => ({
-  CheckoutPanel: function CheckoutProbe() {
+  CheckoutPanel: function CheckoutProbe({ onBack }: { onBack: () => void }) {
     const [pending, setPending] = useState(false);
     return (
-      <button onClick={() => setPending(true)}>
-        {pending ? "Сохраняем исходный запрос" : "Начать проверку запроса"}
-      </button>
+      <section>
+        <button onClick={onBack}>К корзине</button>
+        <button onClick={() => setPending(true)}>
+          {pending ? "Сохраняем исходный запрос" : "Начать проверку запроса"}
+        </button>
+      </section>
     );
   },
   OrdersPanel: () => <section>История аккаунта</section>,
 }));
-vi.mock("@/components/profile-panel", () => ({
-  ProfilePanel: () => <section>Профиль аккаунта</section>,
-}));
+const category = { id: "00000000-0000-4000-8000-000000000001", name: "Супы", sort_order: 1 };
+const dish = {
+  id: "10000000-0000-4000-8000-000000000001",
+  category_id: category.id,
+  name: "Борщ",
+  description: "Свекольный суп.",
+  price: 15000,
+  is_available: true,
+  image_url: null,
+};
+const credentials = {
+  access_token: "synthetic-token",
+  token_type: "bearer",
+  expires_in: 900,
+  user: { id: "30000000-0000-4000-8000-000000000001", telegram_id: 123, username: "student",
+    full_name: "Анна", role: "CLIENT", created_at: "2026-11-04T08:00:00Z" },
+};
+
+let restoreFails: boolean;
+let fetcher: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
+  restoreFails = false;
   localStorage.clear();
-  window.location.hash = "menu";
-  vi.stubGlobal("scrollTo", vi.fn());
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(
-      async (url: string) =>
-        new Response(
-          JSON.stringify(
-            url.includes("categories")
-              ? []
-              : { items: [], total: 0, limit: 24, offset: 0 },
-          ),
-          { headers: { "Content-Type": "application/json" } },
-        ),
-    ),
-  );
+  sessionStorage.clear();
+  window.location.hash = "";
+  fetcher = vi.fn(async (path: string) => {
+    if (path.endsWith("/auth/session")) return restoreFails ? Response.json({}, { status: 401 }) : Response.json(credentials);
+    if (path.endsWith("/auth/telegram")) return Response.json(credentials);
+    if (path.endsWith("/categories")) return Response.json([category]);
+    if (path.includes("/items?")) return Response.json({ items: [dish], total: 1, limit: 24, offset: 0 });
+    if (path.endsWith(dish.id)) return Response.json(dish);
+    throw new Error("Unexpected request " + path);
+  });
+  vi.stubGlobal("fetch", fetcher);
 });
 afterEach(() => {
   cleanup();
@@ -50,50 +63,76 @@ afterEach(() => {
 });
 
 function mount() {
-  render(
-    <QueryClientProvider
-      client={
-        new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      }
-    >
-      <MenuApp />
-    </QueryClientProvider>,
-  );
-}
-function navigate(hash: string) {
-  window.location.hash = hash;
-  fireEvent(window, new HashChangeEvent("hashchange"));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><AuthProvider><MenuApp /></AuthProvider></QueryClientProvider>);
 }
 
-test("changing screens preserves the mounted checkout and hides private screens", async () => {
+test("returning to checkout keeps the same in-flight checkout screen mounted", async () => {
+  localStorage.setItem(CART_KEY, JSON.stringify({ version: 1, items: [{ id: dish.id, quantity: 1 }] }));
   mount();
-  navigate("cart");
-  fireEvent.click(
-    screen.getByRole("button", { name: "Начать проверку запроса" }),
-  );
-  navigate("menu");
-  expect(
-    screen.queryByRole("button", { name: "Сохраняем исходный запрос" }),
-  ).toBeNull();
-  expect(
-    screen.queryByText("История аккаунта")?.closest("[hidden]"),
-  ).not.toBeNull();
-  expect(
-    screen.queryByText("Профиль аккаунта")?.closest("[hidden]"),
-  ).not.toBeNull();
-  navigate("cart");
-  await waitFor(() =>
-    expect(
-      screen.getByRole("button", { name: "Сохраняем исходный запрос" }),
-    ).toBeTruthy(),
-  );
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: /Корзина · 1/ }));
+  const choose = screen.getByRole<HTMLButtonElement>("button", { name: "Выбрать время" });
+  await waitFor(() => expect(choose.disabled).toBe(false));
+  await user.click(choose);
+  await user.click(screen.getByRole("button", { name: "Начать проверку запроса" }));
+  await user.click(screen.getByRole("button", { name: "К корзине" }));
+  expect(screen.queryByRole("button", { name: "Сохраняем исходный запрос" })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Выбрать время" }));
+  expect(screen.getByRole("button", { name: "Сохраняем исходный запрос" })).toBeTruthy();
 });
 
-test("a signed Telegram launch hash opens the menu", () => {
+test("Telegram launch gives the existing auth provider the signed data and lands on the menu", async () => {
+  restoreFails = true;
   window.location.hash = "tgWebAppData=synthetic-test-vector";
   mount();
-  expect(screen.getByRole("heading", { name: "Меню на сегодня" })).toBeTruthy();
-  expect(
-    screen.getByRole("link", { name: "Меню" }).getAttribute("aria-current"),
-  ).toBe("page");
+  expect(screen.getByRole("heading", { name: "Открываем меню" })).toBeTruthy();
+  await screen.findByRole("heading", { name: "Что на обед?" });
+  expect(fetcher).toHaveBeenCalledWith("/api/v1/users/auth/telegram", expect.objectContaining({
+    method: "POST", body: JSON.stringify({ init_data: "synthetic-test-vector" }),
+  }));
+  expect(window.location.hash).toBe("#tgWebAppData=synthetic-test-vector");
+});
+
+test("Back restores the selected category and originating card after a detail read", async () => {
+  mount();
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Супы" }));
+  const card = await screen.findByRole("button", { name: /Подробнее: Борщ/ });
+  await user.click(card);
+  const details = await screen.findByRole("region", { name: "Борщ" });
+  await within(details).findByText("Свекольный суп.");
+  expect(fetcher.mock.calls.some(([path]) => path.endsWith("/items/" + dish.id))).toBe(true);
+  await user.click(within(details).getByRole("button", { name: "Закрыть блюдо" }));
+  expect(screen.getByRole("button", { name: "Супы" }).getAttribute("aria-pressed")).toBe("true");
+  expect(document.activeElement).toBe(card);
+});
+
+test("the dish steppers are local and a single paid action adds the selected quantity", async () => {
+  mount();
+  const user = userEvent.setup();
+  const cards = await screen.findAllByRole("button", { name: /Подробнее: Борщ/ });
+  await user.click(cards[0]);
+  const details = await screen.findByRole("region", { name: "Борщ" });
+  await within(details).findByText("Свекольный суп.");
+  const less = within(details).getByRole<HTMLButtonElement>("button", { name: "Уменьшить количество" });
+  expect(less.disabled).toBe(true);
+  await user.click(within(details).getByRole("button", { name: "Увеличить количество" }));
+  expect(JSON.parse(localStorage.getItem(CART_KEY)!).items).toEqual([]);
+  await user.click(within(details).getByRole("button", { name: /количество 2, 300/ }));
+  expect(within(details).getByRole("button", { name: "В корзине · 2" })).toBeTruthy();
+  expect(JSON.parse(localStorage.getItem(CART_KEY)!).items).toEqual([{ id: dish.id, quantity: 2 }]);
+});
+
+test("an existing READY notification link opens history after session recovery", async () => {
+  window.location.hash = "orders";
+  mount();
+  const history = await screen.findByText("История аккаунта");
+  await waitFor(() => expect(history.closest("[hidden]")).toBeNull());
+});
+
+test("an existing basket link opens checkout entry after session recovery", async () => {
+  window.location.hash = "cart";
+  mount();
+  await screen.findByRole("heading", { name: "Корзина пуста" });
 });
