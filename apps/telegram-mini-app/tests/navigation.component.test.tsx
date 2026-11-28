@@ -108,7 +108,7 @@ test("Back restores the selected category and originating card after a detail re
   expect(document.activeElement).toBe(card);
 });
 
-test("the dish steppers are local and a single paid action adds the selected quantity", async () => {
+test("the dish stepper keeps the saved quantity and applies edits as the new total", async () => {
   mount();
   const user = userEvent.setup();
   const cards = await screen.findAllByRole("button", { name: /Подробнее: Борщ/ });
@@ -122,6 +122,20 @@ test("the dish steppers are local and a single paid action adds the selected qua
   await user.click(within(details).getByRole("button", { name: /количество 2, 300/ }));
   expect(within(details).getByRole("button", { name: "В корзине · 2" })).toBeTruthy();
   expect(JSON.parse(localStorage.getItem(CART_KEY)!).items).toEqual([{ id: dish.id, quantity: 2 }]);
+  expect(within(within(details).getByRole("group", { name: "Количество порций" })).getByText("2")).toBeTruthy();
+  await user.click(within(details).getByRole("button", { name: "Закрыть блюдо" }));
+  await user.click(cards[0]);
+
+  const reopened = await screen.findByRole("region", { name: "Борщ" });
+  expect(within(within(reopened).getByRole("group", { name: "Количество порций" })).getByText("2")).toBeTruthy();
+  await user.click(within(reopened).getByRole("button", { name: "Уменьшить количество" }));
+  const save = within(reopened).getByRole<HTMLButtonElement>("button", { name: /Обновить количество:.*количество 1, 150/ });
+  await waitFor(() => expect(save.disabled).toBe(false));
+  await user.click(save);
+  expect(JSON.parse(localStorage.getItem(CART_KEY)!).items).toEqual([{ id: dish.id, quantity: 1 }]);
+  await user.click(within(reopened).getByRole("button", { name: "Уменьшить количество" }));
+  await user.click(within(reopened).getByRole("button", { name: "Убрать из корзины" }));
+  expect(JSON.parse(localStorage.getItem(CART_KEY)!).items).toEqual([]);
 });
 
 test("an existing READY notification link opens history after session recovery", async () => {

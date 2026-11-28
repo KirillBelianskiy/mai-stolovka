@@ -1,16 +1,16 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Ellipsis, Minus, Plus, X } from "lucide-react";
+import { Check, Ellipsis, Minus, Plus, X } from "lucide-react";
 import { useState } from "react";
 import { BottomAction, Sheet } from "@/components/customer-ui";
 import { DishPhoto } from "@/components/dish-photo";
 import { availablePortions, loadItem, MAX_INTEGER, money, type MenuItem } from "@/lib/menu";
 
-export function DishDetails({ item, onBack, onAdd, onCart, inCart, feedback }: {
+export function DishDetails({ item, onBack, onSetQuantity, onCart, inCart, feedback }: {
   item: MenuItem;
   onBack: () => void;
-  onAdd: (item: MenuItem, count: number) => boolean;
+  onSetQuantity: (item: MenuItem, count: number) => boolean;
   onCart: () => void;
   inCart: number;
   feedback: string;
@@ -21,15 +21,17 @@ export function DishDetails({ item, onBack, onAdd, onCart, inCart, feedback }: {
     refetchOnMount: "always",
     retry: 1,
   });
-  const [count, setCount] = useState(1);
+  const [draft, setDraft] = useState<number | null>(null);
   const [about, setAbout] = useState(false);
-  const [added, setAdded] = useState(false);
+  const count = draft ?? Math.max(1, inCart);
   const current = detail.data ?? item;
   const description = detail.data?.description?.trim();
   const descriptionIsLong = Boolean(description && description.length > 100);
-  const maxCount = Math.min(availablePortions(current) - inCart, current.price ? Math.floor(Number.MAX_SAFE_INTEGER / current.price) : MAX_INTEGER);
+  const maxCount = Math.min(availablePortions(current), current.price ? Math.floor(Number.MAX_SAFE_INTEGER / current.price) : MAX_INTEGER);
   const amount = money(current.price * count);
   const unavailable = detail.isError || availablePortions(current) === 0;
+  const removing = count === 0;
+  const actionLabel = removing ? "Убрать из корзины" : inCart ? "Обновить количество" : "Добавить в корзину";
   return (
     <section className="scene dish-scene" aria-labelledby="dish-heading">
       <div className="dish-artwork" aria-hidden="true">
@@ -59,24 +61,24 @@ export function DishDetails({ item, onBack, onAdd, onCart, inCart, feedback }: {
             )}
             {!unavailable && count > maxCount && <p>Уменьшите количество порций.</p>}
             {feedback && <p role="status">{feedback}</p>}
-            {inCart > 0 && <button className="text-button" onClick={onCart}>{added ? "В корзине" : "Корзина"} · {inCart}</button>}
+            {inCart > 0 && <button className="text-button" onClick={onCart}>В корзине · {inCart}</button>}
           </div>
         )}
         <div className="purchase-dock">
           <div className="quantity-control" role="group" aria-label="Количество порций">
-            <button aria-label="Уменьшить количество" disabled={count <= 1} onClick={() => setCount(count - 1)}>
+            <button aria-label="Уменьшить количество" disabled={count <= (inCart ? 0 : 1)} onClick={() => setDraft(count - 1)}>
               <Minus size={18} aria-hidden="true" />
             </button>
             <span aria-live="polite">{count}</span>
-            <button aria-label="Увеличить количество" disabled={count >= maxCount || unavailable} onClick={() => setCount(count + 1)}>
+            <button aria-label="Увеличить количество" disabled={count >= maxCount || unavailable} onClick={() => setDraft(count + 1)}>
               <Plus size={18} aria-hidden="true" />
             </button>
           </div>
           <button className="primary-button"
-            aria-label={"Добавить в корзину: " + current.name + ", количество " + count + ", " + amount}
-            onClick={() => { if (onAdd(current, count)) { setAdded(true); setCount(1); } }}
-            disabled={detail.isFetching || detail.isPending || unavailable || count > maxCount}>
-            <Plus size={18} aria-hidden="true" /> {amount}
+            aria-label={removing ? actionLabel : actionLabel + ": " + current.name + ", количество " + count + ", " + amount}
+            onClick={() => { if (onSetQuantity(current, count)) setDraft(null); }}
+            disabled={count === inCart || (!removing && (detail.isFetching || unavailable || count > maxCount))}>
+            {removing ? actionLabel : <>{inCart ? <Check size={18} aria-hidden="true" /> : <Plus size={18} aria-hidden="true" />} {amount}</>}
           </button>
         </div>
       </BottomAction>

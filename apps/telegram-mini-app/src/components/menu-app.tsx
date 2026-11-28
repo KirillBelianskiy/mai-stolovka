@@ -199,21 +199,23 @@ function Customer({ accountId }: { accountId: string }) {
       setCartFeedback("Не удалось изменить количество. Уберите лишние позиции.");
     }
   }
-  function add(item: MenuItem, count = 1) {
-    if (!hydrated || !item.is_available) return false;
+  function setDishQuantity(item: MenuItem, amount: number) {
+    if (!hydrated || amount > availablePortions(item)) return false;
     try {
-      const amount = (basket.current.find((line) => line.id === item.id)?.quantity ?? 0) + count;
-      if (amount > availablePortions(item)) return false;
       const next = setQuantity(basket.current, item.id, amount);
       // A catalog card can seed the basket, but must not overwrite a newer detail response.
       client.setQueryData<MenuItem>(["menu-item", item.id], (cached) => cached ?? item);
       updateCart(next);
-      setNotice(item.name + " · В корзине " + amount);
+      setNotice(item.name + (amount ? " · В корзине " + amount : " · Убрано из корзины"));
       return true;
     } catch {
-      setCartFeedback("Не удалось добавить блюдо. Уменьшите количество или уберите позицию.");
+      setCartFeedback("Не удалось изменить корзину. Уменьшите количество или уберите позицию.");
       return false;
     }
+  }
+  function add(item: MenuItem) {
+    const amount = (basket.current.find((line) => line.id === item.id)?.quantity ?? 0) + 1;
+    return setDishQuantity(item, amount);
   }
   function complete(intent: CheckoutIntent) {
     const lines = basket.current
@@ -246,7 +248,7 @@ function Customer({ accountId }: { accountId: string }) {
         />
         <div className="customer-panels" hidden={route.screen === "menu"} ref={panel} tabIndex={-1}>
           {route.screen === "dish" && (
-            <DishDetails item={route.item} onBack={back} onAdd={add} onCart={showCart}
+            <DishDetails key={route.item.id} item={route.item} onBack={back} onSetQuantity={setDishQuantity} onCart={showCart}
               inCart={cart.find((line) => line.id === route.item.id)?.quantity ?? 0}
               feedback={cartFeedback}
             />
