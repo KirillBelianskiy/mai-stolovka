@@ -4,7 +4,7 @@ import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Minus, Plus } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
-import { BackContext, BottomAction, CAMPUS, ScreenHeader, Sheet, positionCount } from "@/components/customer-ui";
+import { BackContext, BottomAction, CAMPUS, ScreenHeader, Sheet, portionLabel, totalPortions } from "@/components/customer-ui";
 import { DishPhoto } from "@/components/dish-photo";
 import { MenuFeed } from "@/components/menu-feed";
 import { DishDetails } from "@/components/dish-details";
@@ -181,7 +181,7 @@ function Customer({ accountId }: { accountId: string }) {
     query.data && !query.isError ? [query.data] : [],
   );
   const total = cartTotal(cart, currentCartItems);
-  const quantity = cart.reduce((sum, line) => sum + line.quantity, 0);
+  const quantity = totalPortions(cart);
 
   function updateCart(next: CartLine[]) {
     if (basket.current.length > 0 && next.length === 0 && route.screen === "cart") focusEmptyBasket.current = true;
@@ -258,7 +258,7 @@ function Customer({ accountId }: { accountId: string }) {
               <div className={cart.length ? "photo-banner lunch-art basket-banner" : ""}>
                 <ScreenHeader onBack={back} />
                 {cart.length > 0 && <h1 id="basket-heading">Ваш обед</h1>}
-                {cart.length > 0 && <p>{positionCount(cart.length)}</p>}
+                {cart.length > 0 && <p>{portionLabel(quantity)}</p>}
               </div>
               {cart.length === 0 ? (
                 <>

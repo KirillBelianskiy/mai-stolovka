@@ -9,7 +9,7 @@ import {
 import { Check, ChevronRight } from "lucide-react";
 import {
   BottomAction, CAMPUS, ScreenHeader, Sheet, moscowDate, moscowDay,
-  pickupTime, positionCount,
+  pickupTime, portionLabel, totalPortions,
 } from "@/components/customer-ui";
 import { DishPhoto } from "@/components/dish-photo";
 import { useAuth } from "@/components/auth-provider";
@@ -430,7 +430,7 @@ function CheckoutSession({
             {cart.length > 0 && (
               <section className="checkout-summary">
                 <h2>Ваш обед</h2>
-                <div>{summaryArt}<strong>{positionCount(cart.length)} · {total === null ? "—" : money(total)}</strong></div>
+                <div>{summaryArt}<strong>{portionLabel(totalPortions(cart))} · {total === null ? "—" : money(total)}</strong></div>
               </section>
             )}
           </>
@@ -747,7 +747,7 @@ function OrderTicket({ accountId, id, accepted, onMenu, onBack }: OrderViewProps
             <p>{moscowDate(order.slot_start_time)} · {CAMPUS}</p>
             <details className="ticket-composition" onToggle={(event) => setCompositionOpen(event.currentTarget.open)}>
               <summary>
-                <span>Состав · {positionCount(order.items.length)}</span>
+                <span>Состав · {portionLabel(totalPortions(order.items))}</span>
                 <strong>{money(order.total_amount)}</strong>
               </summary>
               <ul>

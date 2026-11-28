@@ -61,7 +61,7 @@ export function DishDetails({ item, onBack, onSetQuantity, onCart, inCart, feedb
             )}
             {!unavailable && count > maxCount && <p>Уменьшите количество порций.</p>}
             {feedback && <p role="status">{feedback}</p>}
-            {inCart > 0 && <button className="text-button" onClick={onCart}>В корзине · {inCart}</button>}
+            {inCart > 0 && <button className="text-button" onClick={onCart}>Перейти в корзину</button>}
           </div>
         )}
         <div className="purchase-dock">

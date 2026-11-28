@@ -79,7 +79,7 @@ const dayKey = new Intl.DateTimeFormat("en-CA", {
 const time = new Intl.DateTimeFormat("ru-RU", {
   timeZone: "Europe/Moscow", hour: "2-digit", minute: "2-digit",
 });
-const positions = new Intl.PluralRules("ru-RU");
+const plurals = new Intl.PluralRules("ru-RU");
 
 export function moscowDay(value: string | number) {
   return dayKey.format(new Date(value));
@@ -94,7 +94,11 @@ export function pickupTime(start: string, end: string) {
   return time.format(new Date(start)) + "–" + endDay + time.format(new Date(end));
 }
 
-export function positionCount(count: number) {
-  const form = positions.select(count);
-  return count + " " + (form === "one" ? "позиция" : form === "few" ? "позиции" : "позиций");
+export function totalPortions(lines: ReadonlyArray<{ quantity: number }>) {
+  return lines.reduce((sum, line) => sum + line.quantity, 0);
+}
+
+export function portionLabel(count: number) {
+  const form = plurals.select(count);
+  return count + " " + (form === "one" ? "порция" : form === "few" ? "порции" : "порций");
 }

@@ -121,7 +121,7 @@ test("the dish stepper keeps the saved quantity and applies edits as the new tot
   await user.click(within(details).getByRole("button", { name: "Увеличить количество" }));
   expect(JSON.parse(localStorage.getItem(CART_KEY)!).items).toEqual([]);
   await user.click(within(details).getByRole("button", { name: /количество 2, 300/ }));
-  expect(within(details).getByRole("button", { name: "В корзине · 2" })).toBeTruthy();
+  expect(within(details).getByRole("button", { name: "Перейти в корзину" })).toBeTruthy();
   expect(JSON.parse(localStorage.getItem(CART_KEY)!).items).toEqual([{ id: dish.id, quantity: 2 }]);
   expect(within(within(details).getByRole("group", { name: "Количество порций" })).getByText("2")).toBeTruthy();
   await user.click(within(details).getByRole("button", { name: "Закрыть блюдо" }));
@@ -137,6 +137,24 @@ test("the dish stepper keeps the saved quantity and applies edits as the new tot
   await user.click(within(reopened).getByRole("button", { name: "Уменьшить количество" }));
   await user.click(within(reopened).getByRole("button", { name: "Убрать из корзины" }));
   expect(JSON.parse(localStorage.getItem(CART_KEY)!).items).toEqual([]);
+});
+
+test("featured card, category card, basket and dish agree on the portion count", async () => {
+  mount();
+  const user = userEvent.setup();
+  const buttons = await screen.findAllByRole("button", { name: "Добавить Борщ в корзину" });
+  expect(buttons).toHaveLength(2);
+  await user.click(buttons[0]);
+  await user.click(buttons[1]);
+  expect(screen.getAllByRole("button", { name: "Добавить Борщ в корзину, в корзине 2" })).toHaveLength(2);
+  await user.click(screen.getByRole("button", { name: /Корзина · 2/ }));
+  expect(screen.getByText("2 порции")).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Уменьшить количество: Борщ" }));
+  expect(screen.getByText("1 порция")).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Назад" }));
+  expect(screen.getAllByRole("button", { name: "Добавить Борщ в корзину, в корзине 1" })).toHaveLength(2);
+  await user.click(screen.getAllByRole("button", { name: /Подробнее: Борщ/ })[1]);
+  expect(within(screen.getByRole("group", { name: "Количество порций" })).getByText("1")).toBeTruthy();
 });
 
 test("an existing READY notification link opens history after session recovery", async () => {
