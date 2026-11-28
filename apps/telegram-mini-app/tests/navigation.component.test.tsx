@@ -136,3 +136,22 @@ test("an existing basket link opens checkout entry after session recovery", asyn
   mount();
   await screen.findByRole("heading", { name: "Корзина пуста" });
 });
+
+test("category changes carry the current scroll offset and restore each saved position", async () => {
+  mount();
+  const user = userEvent.setup();
+  const feed = await screen.findByRole("region", { name: "Меню столовой" });
+  await screen.findAllByRole("button", { name: /Подробнее: Борщ/ });
+  feed.scrollTop = 183;
+  await user.click(screen.getByRole("button", { name: "Супы" }));
+  await screen.findByRole("button", { name: /Подробнее: Борщ/ });
+  expect(feed.scrollTop).toBe(183);
+
+  feed.scrollTop = 240;
+  await user.click(screen.getByRole("button", { name: "На обед" }));
+  await screen.findAllByRole("button", { name: /Подробнее: Борщ/ });
+  expect(feed.scrollTop).toBe(183);
+  await user.click(screen.getByRole("button", { name: "Супы" }));
+  await screen.findByRole("button", { name: /Подробнее: Борщ/ });
+  expect(feed.scrollTop).toBe(240);
+});

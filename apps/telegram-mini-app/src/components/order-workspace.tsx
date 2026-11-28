@@ -394,7 +394,7 @@ function CheckoutSession({
                     const interval = pickupTime(slot.start_time, slot.end_time);
                     const availability = expired ? "Приём заказов завершён" : full ? "Мест нет" : picked ? "Выбрано" : "Есть места";
                     return (
-                      <button key={slot.id} className="pickup-slot" aria-pressed={picked} aria-label={interval + " · " + availability}
+                      <button key={slot.id} type="button" className="pickup-slot" aria-pressed={picked} aria-label={interval + " · " + availability}
                         disabled={busy || auth.busy || expired || full}
                         onClick={() => {
                           setSlotId(slot.id);

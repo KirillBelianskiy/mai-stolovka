@@ -174,7 +174,7 @@ strong { font-weight: 700; }
 .launch-status h2 { font-size: 1.5rem; font-weight: 750; }
 .launch-status p { color: var(--muted); margin-block: 12px 18px; }
 
-.menu-feed { padding-bottom: calc(var(--safe-bottom) + 18px); }
+.menu-feed { padding-bottom: calc(var(--safe-bottom) + 18px); overflow-anchor: none; }
 .menu-feed.has-dock { padding-bottom: calc(var(--safe-bottom) + 88px); }
 .menu-cover {
   --cover-progress: 0;
@@ -229,6 +229,13 @@ strong { font-weight: 700; }
 }
 .cover-promo-controls span { width: 20px; height: 4px; border-radius: 9px; background: #7589a9; }
 .cover-promo-controls span[data-current="true"] { background: var(--focus); width: 25px; }
+.cover-promo-toggle {
+  position: absolute;
+  right: var(--right);
+  bottom: 0;
+}
+.cover-promo-toggle:focus-visible { outline-offset: -2px; }
+.cover-promo-toggle svg { width: 16px; height: 16px; }
 .menu-header {
   position: relative;
   pointer-events: none;
@@ -491,6 +498,7 @@ strong { font-weight: 700; }
 .slot-group { display: grid; gap: 10px; margin-bottom: 10px; }
 .slot-group h3 { color: var(--muted); font-weight: 670; }
 .pickup-slot {
+  width: 100%;
   background: var(--card);
   border-radius: 15px;
   display: flex;
@@ -501,6 +509,7 @@ strong { font-weight: 700; }
   min-height: 68px;
   text-align: start;
 }
+.pickup-slot > span { pointer-events: none; }
 .pickup-slot strong { display: block; font-size: 1.25rem; overflow-wrap: anywhere; }
 .pickup-slot small { display: block; margin-top: 2px; color: var(--muted); }
 .pickup-slot[aria-pressed="true"] { background: #1c3564; }

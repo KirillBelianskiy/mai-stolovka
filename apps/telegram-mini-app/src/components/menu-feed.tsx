@@ -124,12 +124,11 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
 
   function switchCategory(id: string | null) {
     if (id === category) return;
-    const current = recordPosition();
-    if (current) positions.current.set(category, current);
-    const top = Number.parseFloat(rail.current ? getComputedStyle(rail.current).top : "") || 0;
-    const pinned = Math.max(0, (hero.current?.offsetHeight ?? 0) - top);
+    // A pending tab may still be showing a short skeleton. Keep its saved position.
+    const current = pendingPosition.current ?? recordPosition();
+    if (!pendingPosition.current && current) positions.current.set(category, current);
     pendingPosition.current = positions.current.get(id) ?? {
-      top: pinned, anchor: undefined, offset: 0, shelves: {},
+      top: current?.top ?? 0, anchor: undefined, offset: 0, shelves: {},
     };
     setCategory(id);
   }
@@ -145,6 +144,9 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
     if (!active || !feed.current) return;
     const viewport = feed.current;
     const position = pendingPosition.current ?? (returnFocus.current ? positions.current.get(category) : null);
+    if (position && menu.isPending) {
+      viewport.scrollTop = position.top;
+    }
     if (position && !menu.isPending) {
       for (const shelf of viewport.querySelectorAll<HTMLElement>("[data-scroll-key]")) {
         const saved = position.shelves[shelf.dataset.scrollKey!];
@@ -152,7 +154,7 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
       }
       viewport.scrollTop = position.top;
       // The cover scrolls behind a sticky rail. Only use a card anchor in the feed.
-      if (position.top > (hero.current?.offsetHeight ?? 0) / 2) {
+      if (position.anchor && position.top > (hero.current?.offsetHeight ?? 0) / 2) {
         const anchor = [...viewport.querySelectorAll<HTMLElement>("[data-feed-card]")]
           .find((card) => card.dataset.feedCard === position.anchor);
         if (anchor) viewport.scrollTop += anchor.getBoundingClientRect().top - position.offset;
@@ -260,7 +262,7 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
         onScroll={measure} onTouchStart={startSwipe} onTouchMove={trackSwipe} onTouchEnd={finishSwipe}
         onTouchCancel={() => { gesture.current = null; }}>
         <div ref={hero} className="menu-cover">
-          <PromoCover />
+          <PromoCover active={active} />
           <header className="menu-header">
             <Send size={29} strokeWidth={1.5} aria-hidden="true" />
             <div><strong>{CAMPUS}</strong>
