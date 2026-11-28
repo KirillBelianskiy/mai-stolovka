@@ -573,8 +573,9 @@ strong { font-weight: 700; }
 .ticket-composition li .dish-photo { width: 36px; height: 36px; }
 .ticket-composition li .dish-photo img { object-fit: contain; }
 .ticket-composition li { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding-block: 6px; }
+.ticket-composition li > span { min-width: 0; overflow-wrap: anywhere; }
 .ticket-composition li small { display: block; color: var(--muted); }
-.ticket-composition li strong { font-weight: 500; text-align: right; }
+.ticket-composition li strong { max-width: 100%; font-weight: 500; text-align: right; overflow-wrap: anywhere; }
 .payment-evidence { margin-top: 8px; }
 .cancel-order { display: flex; margin: 10px auto 0; }
 .order-feedback { margin-block: 10px; color: var(--danger); }
