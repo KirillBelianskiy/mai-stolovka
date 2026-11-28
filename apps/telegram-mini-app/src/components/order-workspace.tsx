@@ -412,7 +412,7 @@ function CheckoutSession({
                           <strong>{interval}</strong>
                           <small>{availability}</small>
                         </span>
-                        <span className="slot-indicator" aria-hidden="true">{picked && <Check size={15} />}</span>
+                        {(!full || expired) && <span className="slot-indicator" aria-hidden="true">{picked && <Check size={15} />}</span>}
                       </button>
                     );
                   })}

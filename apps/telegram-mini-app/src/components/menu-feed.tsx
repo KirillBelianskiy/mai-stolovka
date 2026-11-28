@@ -14,7 +14,7 @@ type Position = {
   top: number;
   anchor: string | undefined;
   offset: number;
-  shelves: Record<string, number>;
+  railLeft: number | undefined;
 };
 
 type Swipe = {
@@ -94,24 +94,14 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
   function recordPosition(): Position | null {
     const viewport = feed.current;
     if (!viewport) return null;
-    const left = viewport.getBoundingClientRect().left;
-    const right = viewport.getBoundingClientRect().right;
     const top = viewport.getBoundingClientRect().top;
     const candidates = [...viewport.querySelectorAll<HTMLElement>("[data-feed-card]")];
-    const anchor = candidates.find((card) => {
-      const rect = card.getBoundingClientRect();
-      return rect.bottom > top && rect.right > left && rect.left < right;
-    });
-    const shelves = Object.fromEntries(
-      [...viewport.querySelectorAll<HTMLElement>("[data-scroll-key]")].map(
-        (shelf) => [shelf.dataset.scrollKey!, shelf.scrollLeft],
-      ),
-    );
+    const anchor = candidates.find((card) => card.getBoundingClientRect().bottom > top);
     return {
       top: viewport.scrollTop,
       anchor: anchor?.dataset.feedCard,
       offset: anchor?.getBoundingClientRect().top ?? 0,
-      shelves,
+      railLeft: rail.current?.scrollLeft,
     };
   }
 
@@ -121,7 +111,7 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
     const current = pendingPosition.current ?? recordPosition();
     if (!pendingPosition.current && current) positions.current.set(category, current);
     pendingPosition.current = positions.current.get(id) ?? {
-      top: current?.top ?? 0, anchor: undefined, offset: 0, shelves: {},
+      top: current?.top ?? 0, anchor: undefined, offset: 0, railLeft: undefined,
     };
     setCategory(id);
   }
@@ -141,10 +131,7 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
       viewport.scrollTop = position.top;
     }
     if (position && !menu.isPending) {
-      for (const shelf of viewport.querySelectorAll<HTMLElement>("[data-scroll-key]")) {
-        const saved = position.shelves[shelf.dataset.scrollKey!];
-        if (saved !== undefined) shelf.scrollLeft = saved;
-      }
+      if (rail.current && position.railLeft !== undefined) rail.current.scrollLeft = position.railLeft;
       viewport.scrollTop = position.top;
       if (position.anchor && position.top > (hero.current?.offsetHeight ?? 0) / 2) {
         const anchor = [...viewport.querySelectorAll<HTMLElement>("[data-feed-card]")]
@@ -179,7 +166,7 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
     const edge = feed.current?.getBoundingClientRect();
     gesture.current = event.touches.length === 1 && edge && touch.clientX > edge.left + 16 &&
       touch.clientX < edge.right - 16 && target instanceof Element &&
-      !target.closest("[data-scroll-key], [data-promo-carousel], button:not(.food-card-body), a, input")
+      !target.closest(".category-rail, [data-promo-carousel], button:not(.food-card-body), a, input")
       ? { x: touch.clientX, y: touch.clientY, time: event.timeStamp, axis: null }
       : null;
   }
@@ -219,8 +206,8 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
     if (next) switchCategory(next.id);
   }
 
-  const shelf = (id: string, list: MenuItem[], compact = false) => (
-    <div className={compact ? "food-shelf featured-shelf" : category ? "category-grid" : "food-shelf catalog-shelf"} data-scroll-key={category ? undefined : id}>
+  const dishGrid = (id: string, list: MenuItem[], featured = false) => (
+    <div className={featured ? "dish-grid featured-grid" : "dish-grid"}>
       {list.map((item) => {
         const count = cart.find((line) => line.id === item.id)?.quantity ?? 0;
         const key = id + "/" + item.id;
@@ -264,7 +251,7 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
             </div>
           </header>
         </div>
-        <nav ref={rail} data-scroll-key="categories" className="category-rail" aria-label="Категории блюд">
+        <nav ref={rail} className="category-rail" aria-label="Категории блюд">
           {options.map(({ id, name }) => (
             <button key={id ?? "all"} aria-pressed={id === category} onClick={() => switchCategory(id)}>
               {name}
@@ -281,8 +268,8 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
           )}
           {feedback && <p className="feed-feedback" role="status">{feedback}</p>}
           {menu.isPending ? (
-            <div role="status" aria-label="Загружаем меню" className="shelf-skeleton">
-              <span /><span /><span />
+            <div role="status" aria-label="Загружаем меню" className="dish-grid menu-skeleton">
+              <span /><span />
             </div>
           ) : menu.isError && !items.length ? (
             <div className="feed-state" role="alert">
@@ -296,15 +283,15 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
             </div>
           ) : category === null ? (
             <>
-              {featured.length > 0 && shelf("featured", featured, true)}
+              {featured.length > 0 && dishGrid("featured", featured, true)}
               {sections.map((section) => (
                 <section className="food-section" key={section.id}>
                   <h2>{section.name}</h2>
-                  {shelf(section.id, section.items)}
+                  {dishGrid(section.id, section.items)}
                 </section>
               ))}
             </>
-          ) : shelf(category, items)}
+          ) : dishGrid(category, items)}
           {menu.isError && items.length > 0 && (
             <p role="alert">Не удалось обновить меню.{" "}
               <button className="text-button" onClick={() => void (menu.isFetchNextPageError ? menu.fetchNextPage() : menu.refetch())}>Повторить</button>
