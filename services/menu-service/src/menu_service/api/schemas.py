@@ -12,16 +12,20 @@ class CategoryWrite(BaseModel):
 class CategoryRead(CategoryWrite):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
+    published_item_count: int | None = Field(default=None, ge=0)
 
 
-class ItemWrite(BaseModel):
+class ItemFields(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     category_id: UUID
     name: str = Field(min_length=1, max_length=256)
     description: str | None = Field(default=None, max_length=10000)
     price: int = Field(strict=True, ge=0, le=2**31 - 1)
-    image_url: str | None = Field(default=None, max_length=2048)
     is_available: bool = Field(default=True, strict=True)
+
+
+class ItemWrite(ItemFields):
+    image_url: str | None = Field(default=None, max_length=2048)
 
     @field_validator("image_url")
     @classmethod
@@ -31,9 +35,16 @@ class ItemWrite(BaseModel):
         return str(HttpUrl(value))
 
 
-class ItemRead(ItemWrite):
+class SnapshotItem(ItemWrite):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
+
+
+class ItemRead(SnapshotItem):
+    model_config = ConfigDict(from_attributes=True)
+    menu_image_url: str | None = Field(default=None, max_length=2048)
+    detail_image_url: str | None = Field(default=None, max_length=2048)
+    remaining_quantity: int | None = Field(default=None, ge=0, le=2**31 - 1)
 
 
 class ItemPage(BaseModel):
@@ -56,4 +67,4 @@ class SnapshotRequest(BaseModel):
 
 
 class SnapshotResponse(BaseModel):
-    items: list[ItemRead]
+    items: list[SnapshotItem]

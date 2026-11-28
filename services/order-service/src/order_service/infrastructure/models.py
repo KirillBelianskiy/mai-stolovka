@@ -5,6 +5,7 @@ from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     DateTime,
     Enum,
@@ -13,6 +14,7 @@ from sqlalchemy import (
     Sequence,
     String,
     UniqueConstraint,
+    false,
     func,
     text,
 )
@@ -76,6 +78,13 @@ class Order(Base):
     slot: Mapped[TimeSlot] = relationship(lazy="raise")
 
 
+class DishStock(Base):
+    __tablename__ = "dish_stock"
+    __table_args__ = (CheckConstraint("remaining_quantity >= 0", name="dish_stock_nonnegative"),)
+    menu_item_id: Mapped[UUID] = mapped_column(primary_key=True)
+    remaining_quantity: Mapped[int | None] = mapped_column(BigInteger)
+
+
 class OrderItem(Base):
     __tablename__ = "order_items"
     __table_args__ = (
@@ -86,6 +95,7 @@ class OrderItem(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     order_id: Mapped[UUID] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), index=True)
     menu_item_id: Mapped[UUID]
+    stock_reserved: Mapped[bool] = mapped_column(default=False, server_default=false())
     quantity: Mapped[int]
     price_at_moment: Mapped[int]
     name_at_moment: Mapped[str] = mapped_column(String(256))

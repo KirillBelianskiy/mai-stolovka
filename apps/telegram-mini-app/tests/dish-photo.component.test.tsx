@@ -1,22 +1,19 @@
 import { afterEach, expect, test } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { DishPhoto } from "../src/components/dish-photo";
 
 afterEach(cleanup);
 
-test("missing and failed images leave an explained placeholder", () => {
-  const item = { name: "Борщ", image_url: null as string | null };
+test("dishes get a neutral illustration if no working photo is available", () => {
+  const item = { name: "Борщ со сметаной", image_url: null as string | null };
   const { container, rerender } = render(<DishPhoto item={item} />);
-  expect(
-    screen.getByRole("img", { name: "Фото блюда «Борщ» недоступно" }),
-  ).toBeTruthy();
+  expect(container.querySelector("img")?.getAttribute("src")).toBe("/design/mai-eda/plate.svg");
   rerender(
     <DishPhoto item={{ ...item, image_url: "http://localhost/borscht.jpg" }} />,
   );
   const image = container.querySelector("img")!;
   fireEvent.error(image);
-  expect(container.querySelector("img")).toBeNull();
-  expect(screen.getByText("Фото пока нет")).toBeTruthy();
+  expect(container.querySelector("img")?.getAttribute("src")).toBe("/design/mai-eda/plate.svg");
 });
 
 test("changing a failed image URL loads the replacement", () => {
@@ -29,5 +26,4 @@ test("changing a failed image URL loads the replacement", () => {
   expect(container.querySelector("img")?.getAttribute("src")).toBe(
     "http://localhost/new.jpg",
   );
-  expect(screen.queryByText("Фото пока нет")).toBeNull();
 });

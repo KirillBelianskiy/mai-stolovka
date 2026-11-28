@@ -17,6 +17,9 @@ type MenuItem = {
   description: string | null;
   price: number;
   image_url: string | null;
+  remaining_quantity?: number | null;
+  menu_image_url?: string | null;
+  detail_image_url?: string | null;
   is_available: boolean;
 };
 type TimeSlot = {
@@ -33,7 +36,6 @@ type MenuItemForm = {
   name: string;
   description: string;
   price: string;
-  image_url: string;
   is_available: boolean;
 };
 type SlotForm = { date: string; start: string; end: string; capacity: string };
@@ -43,7 +45,6 @@ const EMPTY_ITEM: MenuItemForm = {
   name: "",
   description: "",
   price: "",
-  image_url: "",
   is_available: true,
 };
 
@@ -144,6 +145,10 @@ export function AdminPanel({
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [itemForm, setItemForm] = useState<MenuItemForm>(EMPTY_ITEM);
   const [editingItem, setEditingItem] = useState<string | null>(null);
+  const [portions, setPortions] = useState("");
+  const [portionsEdited, setPortionsEdited] = useState(false);
+  const [photoInputRevision, setPhotoInputRevision] = useState(0);
+  const itemBeingEdited = data.items.find((item) => item.id === editingItem);
   const [slotForm, setSlotForm] = useState<SlotForm>({
     date: nextWeekday(),
     start: "11:00",
@@ -226,38 +231,82 @@ export function AdminPanel({
 
   async function saveItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy) return;
     try {
       const price = toKopecks(itemForm.price);
       if (!itemForm.category_id) throw new Error("Выберите категорию.");
-      const body = JSON.stringify({
+      const inputs = new FormData(event.currentTarget);
+      const body = new FormData();
+      for (const name of ["menu_photo", "detail_photo"]) {
+        const photo = inputs.get(name);
+        if (!(photo instanceof File) || !photo.name) {
+          if (!editingItem) throw new Error("Выберите оба фото блюда.");
+          continue;
+        }
+        if (!photo.size) throw new Error("Выбранный файл пуст.");
+        if (photo.size > 5 * 1024 * 1024) throw new Error("Размер одного фото должен быть не больше 5 МБ.");
+        body.set(name, photo);
+      }
+      const quantity = portions.trim() === "" ? null : Number(portions);
+      if (quantity !== null && (!Number.isInteger(quantity) || quantity < 0 || quantity > 2147483647)) {
+        throw new Error("Укажите целое количество порций от 0 до 2147483647.");
+      }
+      const metadata = {
         category_id: itemForm.category_id,
         name: itemForm.name.trim(),
         description: itemForm.description.trim() || null,
         price,
-        image_url: itemForm.image_url.trim() || null,
         is_available: itemForm.is_available,
-      });
-      const path = editingItem ? `/menu/items/${editingItem}` : "/menu/items";
-      const saved = await refreshAfter(
-        () => apiRequest(path, session.token, { method: editingItem ? "PUT" : "POST", body }),
+      };
+      body.set("item_json", JSON.stringify(metadata));
+      await refreshAfter(
+        async () => {
+          let id = editingItem;
+          if (!id) {
+            // Publish a limited dish only after its opening count has been saved.
+            if (quantity !== null) body.set("item_json", JSON.stringify({ ...metadata, is_available: false }));
+            const created = await apiRequest<MenuItem>("/menu/admin/items/upload", session.token, { method: "POST", body });
+            id = created.id;
+            setEditingItem(id);
+            if (quantity === null) { resetItem(); return; }
+            body.delete("menu_photo");
+            body.delete("detail_photo");
+            body.set("item_json", JSON.stringify(metadata));
+          }
+          if (portionsEdited) {
+            await apiRequest("/orders/inventory/" + id, session.token, {
+              method: "PUT", body: JSON.stringify({ remaining_quantity: quantity }),
+            });
+            setPortionsEdited(false);
+          }
+          await apiRequest("/menu/admin/items/" + id + "/upload", session.token, { method: "PUT", body });
+          resetItem();
+        },
         editingItem ? "Блюдо обновлено." : "Блюдо создано.",
       );
-      if (!saved) return;
-      setItemForm(EMPTY_ITEM);
-      setEditingItem(null);
     } catch (error) {
       setNotice({ kind: "error", text: responseMessage(error) });
     }
   }
 
+  function resetItem() {
+    setPortions("");
+    setPortionsEdited(false);
+    setItemForm(EMPTY_ITEM);
+    setEditingItem(null);
+    setPhotoInputRevision((revision) => revision + 1);
+  }
+
   function editItem(item: MenuItem) {
+    setPortions(String(item.remaining_quantity ?? ""));
+    setPortionsEdited(false);
     setEditingItem(item.id);
+    setPhotoInputRevision((revision) => revision + 1);
     setItemForm({
       category_id: item.category_id,
       name: item.name,
       description: item.description ?? "",
       price: `${Math.floor(item.price / 100)}.${String(item.price % 100).padStart(2, "0")}`,
-      image_url: item.image_url ?? "",
       is_available: item.is_available,
     });
     document.getElementById("item-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -368,12 +417,21 @@ export function AdminPanel({
           <label>Название<input maxLength={256} onChange={(event) => setItemForm({ ...itemForm, name: event.target.value })} required value={itemForm.name} /></label>
           <label>Категория<select onChange={(event) => setItemForm({ ...itemForm, category_id: event.target.value })} required value={itemForm.category_id}><option value="">Выберите категорию</option>{data.categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
           <label>Цена, ₽<input inputMode="decimal" onChange={(event) => setItemForm({ ...itemForm, price: event.target.value })} placeholder="Например, 125,50" required value={itemForm.price} /></label>
-          <label>Ссылка на изображение<input maxLength={2048} onChange={(event) => setItemForm({ ...itemForm, image_url: event.target.value })} type="url" value={itemForm.image_url} /></label>
+          <label>Остаток порций<input type="number" min="0" max="2147483647" step="1" inputMode="numeric"
+            placeholder="Без ограничения" value={portions}
+            onChange={(event) => { setPortions(event.target.value); setPortionsEdited(true); }} /></label>
+          <div className="admin-photo-fields span-all" key={photoInputRevision}>
+            <DishFileField name="menu_photo" label="Фото для меню" current={itemBeingEdited?.menu_image_url ?? itemBeingEdited?.image_url}
+              disabled={busy} required={!editingItem} />
+            <DishFileField name="detail_photo" label="Фото для страницы блюда" current={itemBeingEdited?.detail_image_url}
+              disabled={busy} required={!editingItem} />
+            <p>JPEG, PNG или WebP, до 5 МБ на фото.{editingItem && " Чтобы сохранить текущее фото, оставьте поле пустым."}</p>
+          </div>
           <label className="span-all">Описание<textarea maxLength={10000} onChange={(event) => setItemForm({ ...itemForm, description: event.target.value })} rows={2} value={itemForm.description} /></label>
           {editingItem && <label className="availability-control"><input checked={itemForm.is_available} onChange={(event) => setItemForm({ ...itemForm, is_available: event.target.checked })} type="checkbox" /> Доступно покупателям</label>}
           <div className="form-actions span-all">
             <button className="primary-button" disabled={busy || data.categories.length === 0} type="submit"><Save size={15} />{editingItem ? "Сохранить блюдо" : "Добавить блюдо"}</button>
-            {editingItem && <button className="secondary-button" onClick={() => { setEditingItem(null); setItemForm(EMPTY_ITEM); }} type="button">Отмена</button>}
+            {editingItem && <button className="secondary-button" disabled={busy} onClick={resetItem} type="button">Отмена</button>}
           </div>
         </form>
         <div className="admin-table-wrap">
@@ -385,8 +443,8 @@ export function AdminPanel({
                   <td><strong>{item.name}</strong>{item.description && <small>{item.description}</small>}</td>
                   <td>{data.categories.find((category) => category.id === item.category_id)?.name ?? "Категория удалена"}</td>
                   <td>{displayPrice(item.price)}</td>
-                  <td><span className={item.is_available ? "availability available" : "availability unavailable"}>{item.is_available ? "В меню" : "Скрыто"}</span></td>
-                  <td><div className="admin-row-actions"><button className="text-button" onClick={() => editItem(item)} type="button">Изменить</button><button aria-label={`Удалить ${item.name}`} className="icon-button danger-icon" disabled={busy} onClick={() => void removeItem(item)} type="button"><Trash2 size={16} /></button></div></td>
+                  <td><span className={item.is_available && item.remaining_quantity !== 0 ? "availability available" : "availability unavailable"}>{!item.is_available ? "Скрыто" : item.remaining_quantity === 0 ? "Закончилось" : item.remaining_quantity == null ? "В меню" : "Остаток: " + item.remaining_quantity}</span></td>
+                  <td><div className="admin-row-actions"><button className="text-button" disabled={busy} onClick={() => editItem(item)} type="button">Изменить</button><button aria-label={`Удалить ${item.name}`} className="icon-button danger-icon" disabled={busy} onClick={() => void removeItem(item)} type="button"><Trash2 size={16} /></button></div></td>
                 </tr>
               ))}
               {!loading && data.items.length === 0 && <tr><td className="admin-empty" colSpan={5}>Блюд пока нет.</td></tr>}
@@ -427,5 +485,18 @@ export function AdminPanel({
       </section>
       {loading && <p className="admin-loading">Обновляем данные…</p>}
     </div>
+  );
+}
+
+function DishFileField({ name, label, current, disabled, required }: {
+  name: string; label: string; current?: string | null; disabled: boolean; required: boolean;
+}) {
+  return (
+    <label>
+      {label}
+      {current && <img className="admin-photo-preview" src={current} alt="Текущее фото" loading="lazy" referrerPolicy="no-referrer" />}
+      <input aria-label={label} accept="image/jpeg,image/png,image/webp" disabled={disabled}
+        type="file" name={name} required={required} />
+    </label>
   );
 }

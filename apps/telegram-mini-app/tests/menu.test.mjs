@@ -78,12 +78,21 @@ test("total uses current integer kopecks and refuses incomplete or overflowing t
   );
 });
 
+test("a cart can use the last available portion and cannot exceed the current stock", () => {
+  const cart = [{ id, quantity: 2 }];
+  for (const remaining_quantity of [0, 1])
+    assert.equal(cartTotal(cart, [{ ...item, remaining_quantity }]), null);
+  for (const remaining_quantity of [2, null])
+    assert.equal(cartTotal(cart, [{ ...item, remaining_quantity }]), 24690);
+});
+
 test("menu responses are validated rather than trusting success status", () => {
   const page = { items: [item], total: 1, limit: 24, offset: 0 };
   assert.equal(decodeItemPage(page).items[0].name, "Суп");
   for (const value of [
     { ...page, items: [{ ...item, price: "123" }] },
     { ...page, items: [{ ...item, price: -1 }] },
+    { ...page, items: [{ ...item, remaining_quantity: -1 }] },
     { ...page, items: [{ ...item, price: 12.5 }] },
     { ...page, items: [{ ...item, id: "bad" }] },
     { ...page, total: -1 },

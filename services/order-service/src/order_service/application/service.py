@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from order_service.application.schemas import OrderCreate, OrderItemRead, OrderRead
+from order_service.application.stock import reserve_stock, return_stock
 from order_service.application.wallet import debit_wallet, lock_wallet, refund_wallet
 from order_service.config import Settings
 from order_service.domain.orders import TRANSITIONS, DishSnapshot, OrderError, OrderStatus
@@ -166,7 +167,10 @@ async def create_order(
                 "Confirm the current server total before ordering",
                 total_amount=total,
             )
-        # Wallet precedes the shared slot lock; no existing order is locked by creation.
+        # Stock rows are locked in dish order before wallet and slot locks.
+        reserved = await reserve_stock(
+            db, {line.menu_item_id: line.quantity for line in body.items}
+        )
         if settings.demo_payments_enabled:
             await lock_wallet(db, user_id)
         slot = await db.scalar(
@@ -197,6 +201,7 @@ async def create_order(
                 OrderItem(
                     menu_item_id=line.menu_item_id,
                     quantity=line.quantity,
+                    stock_reserved=line.menu_item_id in reserved,
                     price_at_moment=dishes[line.menu_item_id].price,
                     name_at_moment=dishes[line.menu_item_id].name,
                 )
@@ -292,7 +297,8 @@ async def cancel_order(
         )
         if order.status not in allowed:
             raise OrderError(409, "CANNOT_CANCEL", "This order can no longer be cancelled")
-        # Existing order -> wallet -> slot; creation never waits on existing orders.
+        # Existing order -> stock -> wallet -> slot; creation never locks existing orders.
+        await return_stock(db, order.items)
         if order.payment_status == "DEMO_PAID":
             await refund_wallet(db, order.user_id, order.id, order.total_amount)
             order.payment_status = "DEMO_REFUNDED"

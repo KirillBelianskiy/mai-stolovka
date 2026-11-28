@@ -1,18 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   useInfiniteQuery,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { Check, ChevronRight } from "lucide-react";
 import {
-  ArrowRight,
-  RefreshCw,
-  Ticket,
-  Clock3,
-  AlertCircle,
-} from "lucide-react";
+  BottomAction, CAMPUS, ScreenHeader, Sheet, moscowDate, moscowDay,
+  pickupTime, portionLabel, totalPortions,
+} from "@/components/customer-ui";
+import { DishPhoto } from "@/components/dish-photo";
 import { useAuth } from "@/components/auth-provider";
 import {
   createIntent,
@@ -21,12 +20,11 @@ import {
   removeIntent,
   type CheckoutIntent,
 } from "@/lib/checkout";
-import { money, type CartLine } from "@/lib/menu";
+import { loadItem, money, type CartLine, type MenuItem } from "@/lib/menu";
 import {
   canCancel,
   cancelOrder,
   createOrder,
-  formatSlot,
   loadOrder,
   loadOrders,
   loadSlots,
@@ -42,6 +40,13 @@ type CheckoutProps = {
   cart: CartLine[];
   total: number | null;
   onComplete: (intent: CheckoutIntent) => void;
+  active: boolean;
+  items: MenuItem[];
+  onBack: () => void;
+  onHistory: () => void;
+  onMenu: () => void;
+  onOrder: (id: string, accepted: boolean) => void;
+  onJournal: (present: boolean) => void;
 };
 const knownRejections = new Set([
   "PRICE_CHANGED",
@@ -50,6 +55,7 @@ const knownRejections = new Set([
   "SLOT_NOT_FOUND",
   "TOTAL_TOO_LARGE",
   "INSUFFICIENT_FUNDS",
+  "INSUFFICIENT_STOCK",
   "MENU_ITEM_NOT_FOUND",
   "MENU_ITEM_UNAVAILABLE",
   "DISH_UNAVAILABLE",
@@ -58,15 +64,7 @@ const knownRejections = new Set([
 
 export function CheckoutPanel(props: CheckoutProps) {
   const auth = useAuth();
-  if (auth.status !== "authenticated" || !auth.credentials)
-    return (
-      <div className="checkout-login">
-        <p>Войдите, чтобы выбрать время и оформить заказ.</p>
-        <a href="#profile">
-          Открыть профиль <ArrowRight size={15} />
-        </a>
-      </div>
-    );
+  if (auth.status !== "authenticated" || !auth.credentials) return null;
   if (auth.credentials.user.role !== "CLIENT")
     return <p className="inline-note">Для заказа нужен аккаунт посетителя.</p>;
   return (
@@ -81,7 +79,7 @@ function CheckoutSession({
   accountId,
   cart,
   total,
-  onComplete,
+  onComplete, active, items, onBack, onHistory, onMenu, onOrder, onJournal,
 }: CheckoutProps & { accountId: string }) {
   const auth = useAuth(),
     client = useQueryClient();
@@ -89,16 +87,21 @@ function CheckoutSession({
     [ready, setReady] = useState(false),
     [storageError, setStorageError] = useState(false);
   const [slotId, setSlotId] = useState(""),
-    [busy, setBusy] = useState(false),
+    [submission, setSubmission] = useState<"new" | "recovery" | null>(null),
     [failure, setFailure] = useState("");
   const [price, setPrice] = useState<{
       total: number;
       cart: string;
       slot: string;
+      previous: number;
     } | null>(null),
     [ticket, setTicket] = useState<string | null>(null),
-    [confirmed, setConfirmed] = useState("");
+    [slotRejection, setSlotRejection] = useState<{ title: string; time: string; message: string } | null>(null);
+  const [focusSlots, setFocusSlots] = useState(false);
+  const slotHeading = useRef<HTMLHeadingElement>(null);
+  const recoveryHeading = useRef<HTMLHeadingElement>(null);
   const [clearWarning, setClearWarning] = useState(false);
+  const busy = submission !== null;
   const lock = useRef(false),
     mounted = useRef(true);
   useEffect(() => {
@@ -158,27 +161,30 @@ function CheckoutSession({
   async function send(saved: CheckoutIntent, recovering: boolean) {
     if (lock.current || auth.busy) return;
     lock.current = true;
-    setBusy(true);
+    setSubmission(recovering ? "recovery" : "new");
     setFailure("");
-    setConfirmed("");
+    setSlotRejection(null);
     let attempted = false;
     try {
       if (saved.account_id !== accountId)
         throw new Error("Wrong account intent");
       persistIntent(sessionStorage, saved);
       setIntent(saved);
+      onJournal(true);
       setStorageError(false);
       attempted = true;
       const result = await auth.withAccount(accountId, (t) =>
         createOrder(saved, t),
       );
       if (!mounted.current) return;
-      setTicket(result.id);
-      setConfirmed(`Запрос подтверждён. Заказ ${result.order_number}.`);
+
+      void client.invalidateQueries({ queryKey: ["menu-items"] });
+      void client.invalidateQueries({ queryKey: ["menu-item"] });
       void client.invalidateQueries({ queryKey: ["own-orders", accountId] });
       try {
         removeIntent(sessionStorage, saved.key);
       } catch {
+        setTicket(result.id);
         setStorageError(true);
         setFailure(
           "Заказ подтверждён, но ключ восстановления не удалось удалить. Новый заказ заблокирован; сначала проверьте талон и историю.",
@@ -187,7 +193,9 @@ function CheckoutSession({
       }
       setIntent(null);
       setPrice(null);
+      setSlotId("");
       onComplete(saved);
+      onOrder(result.id, !recovering);
     } catch (error) {
       if (!mounted.current) return;
       if (!attempted) {
@@ -202,16 +210,32 @@ function CheckoutSession({
         error instanceof OrderApiError &&
         error.code &&
         knownRejections.has(error.code);
+      if (rejection && error.code === "INSUFFICIENT_STOCK") {
+        void client.invalidateQueries({ queryKey: ["menu-item"] });
+        void client.invalidateQueries({ queryKey: ["menu-items"] });
+      }
       if (rejection) {
         try {
           removeIntent(sessionStorage, saved.key);
           setIntent(null);
+          onJournal(false);
           if (error.code === "PRICE_CHANGED" && error.totalAmount !== null)
             setPrice({
               total: error.totalAmount,
+              previous: saved.body.expected_total_amount,
               cart: JSON.stringify(saved.body.items),
               slot: saved.body.slot_id,
             });
+          if (error.code === "SLOT_FULL" || error.code === "SLOT_CLOSED" || error.code === "SLOT_NOT_FOUND") {
+            const rejected = choices.find((slot) => slot.id === saved.body.slot_id);
+            setSlotRejection({
+              title: error.code === "SLOT_FULL" ? "Время уже занято" : "Время уже недоступно",
+              time: rejected ? pickupTime(rejected.start_time, rejected.end_time) : "",
+              message: orderFailure(error),
+            });
+            setSlotId("");
+            setPrice(null);
+          }
         } catch {
           setStorageError(true);
         }
@@ -221,7 +245,7 @@ function CheckoutSession({
     } finally {
       lock.current = false;
       if (mounted.current) {
-        setBusy(false);
+        setSubmission(null);
         void client.invalidateQueries({
           queryKey: ["own-orders", accountId, "wallet"],
         });
@@ -253,261 +277,232 @@ function CheckoutSession({
       setFailure("");
       setPrice(null);
       setClearWarning(false);
+      onJournal(false);
+      if (ticket) {
+        onOrder(ticket, true);
+        setTicket(null);
+      }
     } catch {
       setStorageError(true);
       setFailure("Не удалось очистить данные. Новый заказ заблокирован.");
     }
   }
+
+  useLayoutEffect(() => {
+    if (active && (slotRejection || priceApplicable)) recoveryHeading.current?.focus();
+  }, [active, slotRejection, priceApplicable]);
+  useLayoutEffect(() => {
+    if (active && focusSlots && !slots.isFetching) {
+      slotHeading.current?.focus();
+      setFocusSlots(false);
+    }
+  }, [active, focusSlots, slots.isFetching]);
+
+  const showIntent = intent && submission !== "new";
+  const recoveringIntent = showIntent && intent.account_id === accountId;
+  const groups = new Map<string, typeof choices>();
+  for (const slot of choices) {
+    const day = moscowDay(slot.start_time);
+    groups.set(day, [...(groups.get(day) ?? []), slot]);
+  }
+  const firstDay = choices[0]?.start_time;
+  const readiness = wallet.data?.checkout_payment_enabled && total !== null
+    ? Math.max(0, (priceApplicable ? price.total : total) - wallet.data.balance)
+    : 0;
+  const recovery = slotRejection || priceApplicable;
+  const heading = recovery || showIntent || storageError ? "Оформление" : "Когда заберёте?";
+  const summaryArt = (
+    <div className="checkout-thumbs">
+      {items.slice(0, 3).map((item) => <DishPhoto key={item.id} item={item} />)}
+    </div>
+  );
+
   return (
-    <section className="checkout-section" aria-labelledby="checkout-heading">
-      <h3 id="checkout-heading">
-        <Clock3 size={18} aria-hidden="true" /> Время выдачи
-      </h3>
-      <section className="demo-wallet" aria-label="Демонстрационный баланс">
-        <div className="wallet-heading">
-          <strong>Демобаланс</strong>
-          <button
-            className="text-button"
-            disabled={wallet.isFetching || busy || auth.busy}
-            onClick={() => void wallet.refetch()}
-          >
-            Обновить демобаланс
-          </button>
-        </div>
-        {wallet.isPending ? <p role="status">Проверяем демобаланс…</p> : null}
-        {wallet.isError ? (
-          <p role="alert">
-            Не удалось обновить демобаланс. Данные могут быть устаревшими.
-            Обновите баланс перед новым заказом.
-          </p>
-        ) : null}
-        {wallet.data && (
-          <>
-            <p className="wallet-amount">{money(wallet.data.balance)}</p>
-            <p>
-              {wallet.data.checkout_payment_enabled
-                ? "При оформлении сервер спишет демосредства. Итог и доступный баланс проверяются заново."
-                : "Демооплата выключена. Для нового заказа оплата не требуется."}
-            </p>
-            {wallet.data.checkout_payment_enabled &&
-              total !== null &&
-              wallet.data.balance < (priceApplicable ? price.total : total) && (
-                <p className="wallet-shortfall">
-                  По последним данным средств недостаточно. После пополнения
-                  обновите баланс.
-                </p>
-              )}
-          </>
+    <section className="scene checkout-scene" aria-labelledby="checkout-heading">
+      <div className={"photo-banner checkout-banner " + (recovery ? "lunch-art" : "plane-art")}>
+        <ScreenHeader onBack={onBack} />
+        <h1 id="checkout-heading">{heading}</h1>
+        {!recovery && !showIntent && !storageError && (
+          <p>{firstDay && groups.size === 1 ? moscowDate(firstDay) + " · " : ""}время московское</p>
         )}
-        <p className="order-smallprint">
-          Это учебные средства, не реальные деньги. Пополнение выполняет
-          администратор через API/Swagger. Баланс — по последнему обновлению.
-        </p>
-      </section>
-      {!ready ? (
-        <p role="status">Проверяем незавершённые запросы…</p>
-      ) : storageError ? (
-        <div className="checkout-warning" role="alert">
-          <p>
-            Хранилище вкладки недоступно или сохранённый запрос повреждён.
-            Оформление заблокировано.
-          </p>
-          <button
-            className="text-button"
-            disabled={busy}
-            onClick={() => setClearWarning(true)}
-          >
-            Очистить данные с предупреждением
-          </button>
-        </div>
-      ) : intent ? (
-        <div className="checkout-warning" role="status">
-          <p>
-            <strong>
-              {intent.account_id === accountId
-                ? "Есть незавершённый запрос"
-                : "Есть запрос другого аккаунта"}
-            </strong>
-          </p>
-          {intent.account_id === accountId ? (
-            <>
-              <p>
-                Результат может быть уже сохранён. Повторяем исходный заказ на{" "}
-                {money(intent.body.expected_total_amount)}, даже если корзина
-                изменилась.
-              </p>
-              <button
-                className="primary-button"
-                disabled={busy || auth.busy}
-                onClick={() => void send(intent, true)}
-              >
-                {busy ? "Проверяем результат…" : "Восстановить исходный заказ"}
-              </button>
-            </>
-          ) : (
-            <p>
-              Вернитесь в исходный аккаунт. Этот запрос не будет отправлен от
-              вашего имени.
-            </p>
-          )}
-          <a className="text-button" href="#orders">
-            Сначала проверить историю
-          </a>
-          <button
-            className="text-button"
-            disabled={busy}
-            onClick={() => setClearWarning(true)}
-          >
-            Очистить данные с предупреждением
-          </button>
-        </div>
-      ) : (
-        <>
-          <label htmlFor="checkout-slot" className="slot-label">
-            Когда заберёте обед · МСК
-          </label>
-          <select
-            id="checkout-slot"
-            value={slotId}
-            onChange={(e) => {
-              setSlotId(e.target.value);
-              setPrice(null);
-            }}
-            disabled={busy || auth.busy || slots.isPending}
-          >
-            <option value="">Выберите время</option>
-            {choices.map((slot) => (
-              <option
-                key={slot.id}
-                value={slot.id}
-                disabled={
-                  slot.remaining_capacity <= 0 ||
-                  Date.parse(slot.start_time) <= Date.now()
-                }
-              >
-                {formatSlot(slot.start_time, slot.end_time)} ·{" "}
-                {slot.remaining_capacity > 0
-                  ? `мест: ${slot.remaining_capacity}`
-                  : "мест нет"}
-              </option>
-            ))}
-          </select>
-          {slots.isPending && <p role="status">Загружаем время выдачи…</p>}
-          {slots.isError && (
-            <p role="alert">
-              Не удалось обновить время.{" "}
-              <button
-                className="text-button"
-                onClick={() => void slots.refetch()}
-              >
-                Повторить загрузку
-              </button>
-            </p>
-          )}
-          {!slots.isPending && !slots.isError && choices.length === 0 && (
-            <p>Пока нет доступного времени. Проверьте позже.</p>
-          )}
-          <div className="slot-actions">
-            <button
-              className="text-button"
-              disabled={slots.isFetching || busy}
-              onClick={() => void slots.refetch()}
-            >
-              Обновить время
+      </div>
+      <div className="screen-content checkout-content">
+        {!ready ? (
+          <p role="status">Проверяем незавершённые запросы…</p>
+        ) : storageError ? (
+          <div className="checkout-warning" role="alert">
+            <p>Хранилище вкладки недоступно или сохранённый запрос повреждён. Оформление заблокировано.</p>
+            <button className="text-button" disabled={busy} onClick={() => setClearWarning(true)}>
+              Очистить данные с предупреждением
             </button>
-            {slots.hasNextPage && (
-              <button
-                className="text-button"
-                disabled={slots.isFetchingNextPage || busy}
-                onClick={() => void slots.fetchNextPage()}
-              >
-                Ещё время
-              </button>
+          </div>
+        ) : showIntent ? (
+          <div className="checkout-warning" role="status">
+            <h2>{recoveringIntent ? "Есть незавершённый запрос" : "Есть запрос другого аккаунта"}</h2>
+            {recoveringIntent ? (
+              <p>Проверим исходный заказ на {money(intent.body.expected_total_amount)}. Корзина сохранена.</p>
+            ) : (
+              <p>Вернитесь в исходный аккаунт, чтобы проверить запрос.</p>
+            )}
+            <button className="text-button" disabled={busy} onClick={onHistory}>Сначала проверить историю</button>
+            <button className="text-button" disabled={busy} onClick={() => setClearWarning(true)}>
+              Очистить данные с предупреждением
+            </button>
+          </div>
+        ) : slotRejection ? (
+          <div className="checkout-recovery">
+            <h2 ref={recoveryHeading} tabIndex={-1}>{slotRejection.title}</h2>
+            <p>Корзина сохранена.</p>
+            {summaryArt}
+            <div className="recovery-totals">
+              {slotRejection.time && <p className="rejected-time">{slotRejection.time}</p>}
+              <p>{slotRejection.message}</p>
+            </div>
+          </div>
+        ) : priceApplicable ? (
+          <div className="checkout-recovery">
+            <h2 ref={recoveryHeading} tabIndex={-1}>Цена изменилась</h2>
+            <p>Проверьте новый итог.</p>
+            {summaryArt}
+            <dl className="recovery-totals">
+              <div><dt>Было</dt><dd>{money(price.previous)}</dd></div>
+              <div><dt>Стало</dt><dd>{money(price.total)}</dd></div>
+            </dl>
+            {!valid && (
+              <button className="text-button" onClick={() => {
+                setPrice(null);
+                setSlotId("");
+                setFocusSlots(true);
+                void slots.refetch();
+              }}>Выбрать другое время</button>
             )}
           </div>
-          {priceApplicable ? (
-            <div className="price-confirmation" role="alert">
-              <p>
-                Новая сумма по данным столовой:{" "}
-                <strong>{money(price.total)}</strong>. Подтвердите её отдельно.
+        ) : (
+          <>
+            <h2 className="sr-only" ref={slotHeading} tabIndex={-1}>Интервалы выдачи</h2>
+            {slots.isPending && <p role="status">Загружаем время выдачи…</p>}
+            {slots.isError && (
+              <p role="alert">
+                Не удалось обновить время.{" "}
+                <button className="text-button" onClick={() => void slots.refetch()}>Повторить загрузку</button>
               </p>
-              <button
-                className="primary-button"
-                disabled={!valid || !paymentReady || busy}
-                onClick={() => start(price.total)}
-              >
-                Подтвердить новую сумму {money(price.total)}
-              </button>
+            )}
+            {!slots.isPending && !slots.isError && choices.length === 0 && (
+              <p>Пока нет доступного времени. Проверьте позже.</p>
+            )}
+            <div role="group" aria-label="Интервалы выдачи">
+              {[...groups].map(([day, slotsForDay]) => (
+                <div className="slot-group" key={day}>
+                  {groups.size > 1 && <h3>{moscowDate(slotsForDay[0].start_time)}</h3>}
+                  {slotsForDay.map((slot) => {
+                    const expired = Date.parse(slot.start_time) <= Date.now();
+                    const full = slot.remaining_capacity <= 0;
+                    const picked = slot.id === slotId && !expired && !full;
+                    const interval = pickupTime(slot.start_time, slot.end_time);
+                    const availability = expired ? "Приём заказов завершён" : full ? "Мест нет" : picked ? "Выбрано" : "Есть места";
+                    return (
+                      <button key={slot.id} type="button" className="pickup-slot" data-full={full && !expired} aria-pressed={picked} aria-label={interval + " · " + availability}
+                        disabled={busy || auth.busy || expired || full}
+                        onClick={() => {
+                          setSlotId(slot.id);
+                          setPrice(null);
+                          setFailure("");
+                        }}>
+                        <span>
+                          <strong>{interval}</strong>
+                          <small>{availability}</small>
+                        </span>
+                        {(!full || expired) && <span className="slot-indicator" aria-hidden="true">{picked && <Check size={15} />}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
-          ) : (
-            <button
-              className="primary-button checkout-submit"
-              disabled={!valid || !paymentReady || busy}
-              onClick={() => total !== null && start(total)}
-            >
-              {busy
-                ? "Подтверждаем заказ…"
-                : cart.length === 0
-                  ? "Добавьте блюда из меню"
-                  : `Заказать${total !== null ? ` за ${money(total)}` : ""}`}
-              <ArrowRight size={16} aria-hidden="true" />
-            </button>
+            <div className="slot-actions">
+              <button className="text-button" disabled={slots.isFetching || busy}
+                onClick={() => void slots.refetch()}>Обновить время</button>
+              {slots.hasNextPage && (
+                <button className="text-button" disabled={slots.isFetching || busy}
+                  onClick={() => void slots.fetchNextPage()}>Ещё интервалы</button>
+              )}
+            </div>
+            {cart.length > 0 && (
+              <section className="checkout-summary">
+                <h2>Ваш обед</h2>
+                <div>{summaryArt}<strong>{portionLabel(totalPortions(cart))} · {total === null ? "—" : money(total)}</strong></div>
+              </section>
+            )}
+          </>
+        )}
+        <section className="demo-wallet" aria-label="Демонстрационный баланс">
+          {wallet.isPending && <p role="status">Проверяем демобаланс…</p>}
+          {wallet.isError && <p role="alert">Не удалось обновить демобаланс. Обновите баланс перед новым заказом.</p>}
+          {wallet.data && (
+            <>
+              <p>Демобаланс <strong>{money(wallet.data.balance)}</strong></p>
+              {!wallet.data.checkout_payment_enabled && !wallet.isError && <p>Оплата не требуется</p>}
+              {readiness > 0 && <p className="error-text">Не хватает {money(readiness)}. Обновите баланс после пополнения.</p>}
+            </>
           )}
-        </>
-      )}
-      {clearWarning && (
-        <div
-          className="checkout-warning"
-          role="alertdialog"
-          aria-label="Предупреждение об очистке запроса"
-        >
-          <p>
-            Заказ мог быть создан. Сначала проверьте историю. Очистка удалит
-            ключ восстановления: повторное оформление может создать ещё один
-            заказ.
+          <button className="text-button" disabled={wallet.isFetching || busy || auth.busy}
+            onClick={() => void wallet.refetch()}>Обновить демобаланс</button>
+        </section>
+        {failure && !recovery && (
+          <p role="alert" className="order-feedback">
+            {failure}
+            {recoveringIntent && " Проверьте исходный запрос перед новым заказом."}
           </p>
-          <button
-            className="text-button"
-            disabled={busy}
-            autoFocus
-            onClick={() => setClearWarning(false)}
-          >
-            Вернуться к запросу
-          </button>
-          <button className="text-button" disabled={busy} onClick={clear}>
-            Удалить ключ восстановления
-          </button>
-        </div>
+        )}
+        {ticket && <OrderTicket accountId={accountId} id={ticket} accepted onMenu={onMenu} />}
+      </div>
+      {!ticket && (
+        <BottomAction>
+          {recoveringIntent && !storageError ? (
+            <button className="primary-button" disabled={busy || auth.busy} onClick={() => void send(intent, true)}>
+              {busy ? "Проверяем результат…" : "Восстановить исходный заказ"}
+            </button>
+          ) : slotRejection ? (
+            <button className="primary-button" onClick={() => {
+              setSlotRejection(null);
+              setFailure("");
+              setFocusSlots(true);
+            }}>Выбрать другое время</button>
+          ) : ready && !storageError && !showIntent ? (
+            <button className="primary-button" disabled={!valid || !paymentReady || busy}
+              onClick={() => {
+                const amount = priceApplicable ? price.total : total;
+                if (amount !== null) start(amount);
+              }}>
+              {submission === "new" ? "Подтверждаем заказ…" : priceApplicable ? "Подтвердить новую сумму · " + money(price.total) :
+                total !== null ? "Подтвердить · " + money(total) : "Подтвердить заказ"}
+            </button>
+          ) : null}
+        </BottomAction>
       )}
-      <p className="checkout-privacy">
-        Запрос сохраняется только в этой вкладке, без данных входа. Закрытие
-        вкладки или очистка данных может лишить восстановления. История заказов
-        хранится у столовой.
-      </p>
-      {failure && (
-        <p role="alert" className="order-feedback">
-          {failure}
-          {intent?.account_id === accountId &&
-            " Не создавайте новый заказ, пока не проверите исходный запрос."}
-        </p>
+      {active && clearWarning && (
+        <Sheet title="Предупреждение об очистке запроса" alert onDismiss={() => setClearWarning(false)}>
+          <p>Заказ мог быть создан. Сначала проверьте историю. Повторное оформление после удаления ключа может создать ещё один заказ.</p>
+          <button className="primary-button" disabled={busy} autoFocus onClick={() => setClearWarning(false)}>Вернуться к запросу</button>
+          <button className="text-button danger-button" disabled={busy} onClick={clear}>Удалить ключ восстановления</button>
+        </Sheet>
       )}
-      {confirmed && (
-        <p role="status" className="order-confirmed">
-          {confirmed}
-        </p>
-      )}
-      {ticket && <OrderTicket accountId={accountId} id={ticket} />}
     </section>
   );
 }
 
-export function OrdersPanel() {
-  const auth = useAuth(),
-    client = useQueryClient();
-  const id =
-    auth.status === "authenticated" && auth.credentials?.user.role === "CLIENT"
-      ? auth.credentials.user.id
-      : null;
+type HistoryProps = {
+  active: boolean;
+  onBack: () => void;
+  onMenu: () => void;
+  onOrder: (id: string) => void;
+};
+
+export function OrdersPanel(props: HistoryProps) {
+  const auth = useAuth();
+  const client = useQueryClient();
+  const id = auth.status === "authenticated" && auth.credentials?.user.role === "CLIENT"
+    ? auth.credentials.user.id : null;
   useEffect(
     () => () => {
       if (id) {
@@ -517,176 +512,172 @@ export function OrdersPanel() {
     },
     [client, id],
   );
-  return (
-    <section
-      className="orders-section"
-      id="orders"
-      aria-labelledby="orders-heading"
-    >
-      <div className="profile-heading">
-        <div>
-          <p className="eyebrow">Ваши заказы</p>
-          <h2 id="orders-heading">Обед по плану</h2>
-        </div>
-        <Ticket size={25} aria-hidden="true" />
-      </div>
-      {id ? (
-        <OrderHistory key={id} accountId={id} />
-      ) : (
-        <p>
-          История доступна после <a href="#profile">входа в аккаунт</a>.
-        </p>
-      )}
-    </section>
-  );
+  return id ? <OrderHistory key={id} accountId={id} {...props} /> : null;
 }
-function OrderHistory({ accountId }: { accountId: string }) {
+
+function OrderHistory({ accountId, active, onBack, onMenu, onOrder }: HistoryProps & { accountId: string }) {
   const auth = useAuth();
-  const [offset, setOffset] = useState(0),
-    [selected, setSelected] = useState<string | null>(null);
+  const [offset, setOffset] = useState(0);
+  const lastOrder = useRef<string | null>(null);
+  const viewport = useRef<HTMLElement>(null);
+  const scroll = useRef(0);
   const history = useQuery({
     queryKey: ["own-orders", accountId, "history", offset],
-    queryFn: ({ signal }) =>
-      auth.withAccount(accountId, (t) =>
-        loadOrders(accountId, t, offset, signal),
-      ),
+    queryFn: ({ signal }) => auth.withAccount(accountId, (t) => loadOrders(accountId, t, offset, signal)),
+    enabled: active,
     retry: 1,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
   });
+  useLayoutEffect(() => {
+    const scene = viewport.current;
+    if (!active || !lastOrder.current || !scene) return;
+    const frame = requestAnimationFrame(() => {
+      scene.scrollTop = scroll.current;
+      const row = Array.from(scene.querySelectorAll<HTMLButtonElement>("[data-history-order]"))
+        .find((button) => button.dataset.historyOrder === lastOrder.current);
+      (row ?? scene.querySelector<HTMLElement>("#orders-heading"))?.focus({ preventScroll: true });
+      lastOrder.current = null;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [active]);
+  const today = moscowDay(Date.now());
+  const orders = history.data?.items ?? [];
+  const highlighted = orders.filter((order) => (moscowDay(order.slot_start_time) === today || moscowDay(order.created_at) === today) &&
+    order.status !== "COMPLETED" && order.status !== "CANCELLED");
+  const remaining = orders.filter((order) => !highlighted.includes(order));
+  function open(id: string) {
+    lastOrder.current = id;
+    scroll.current = viewport.current?.scrollTop ?? 0;
+    onOrder(id);
+  }
   return (
-    <>
-      {selected && (
-        <button className="back-link" onClick={() => setSelected(null)}>
-          ← К истории
-        </button>
-      )}
-      <div className="orders-toolbar" hidden={!!selected}>
-        <p>
-          По последнему обновлению. При возвращении в приложение сверяем статус.
-        </p>
-        <button
-          className="text-button"
-          disabled={history.isFetching}
-          onClick={() => void history.refetch()}
-        >
-          <RefreshCw size={15} /> Обновить историю
-        </button>
-      </div>
-      {history.isPending ? (
-        <p role="status">Загружаем заказы…</p>
-      ) : history.isError ? (
-        <p role="alert">
-          {orderFailure(history.error)} Показанные данные могут устареть.
-        </p>
-      ) : null}
-      {history.data?.items.length === 0 && (
-        <p className="orders-empty">
-          Здесь появятся ваши заказы и талоны на выдачу.
-        </p>
-      )}
-      <div className="order-list" hidden={!!selected}>
-        {history.data?.items.map((order) => (
-          <button
-            className={`order-row ${selected === order.id ? "selected" : ""}`}
-            key={order.id}
-            onClick={() => {
-              setSelected(order.id);
-              window.scrollTo(0, 0);
-            }}
-          >
-            <span>
-              <strong>{order.order_number}</strong>
-              <span>
-                {formatSlot(order.slot_start_time, order.slot_end_time)}
-              </span>
-            </span>
-            <span>
-              <span
-                className={`order-status status-${order.status.toLowerCase()}`}
-              >
-                {STATUS_LABELS[order.status]}
-              </span>
-              <strong>{money(order.total_amount)}</strong>
-              <span className="payment-evidence">
-                {paymentLabel(order.payment_status)}
-              </span>
-            </span>
+    <section ref={viewport} className="scene history-scene" aria-labelledby="orders-heading">
+      <ScreenHeader onBack={onBack} />
+      <div className="screen-content">
+        <h1 id="orders-heading" tabIndex={-1}>Мои заказы</h1>
+        {history.isPending && <p role="status">Загружаем заказы…</p>}
+        {history.isError && <p role="alert">{orderFailure(history.error)}{orders.length > 0 && " Показаны последние загруженные данные."}</p>}
+        {history.data && !orders.length && (
+          <div className="empty-screen">
+            <div className="state-art lunch-art" />
+            <h2>Здесь появятся ваши заказы</h2>
+            <p>Выберите первый обед в меню.</p>
+          </div>
+        )}
+        {highlighted.length > 0 && (
+          <section className="history-today">
+            <h2>Сегодня</h2>
+            {highlighted.map((order) => (
+              <button className="history-feature" key={order.id} data-history-order={order.id} onClick={() => open(order.id)}>
+                <span className="history-cover lunch-art">
+                  <strong>{order.order_number}</strong>
+                  <span className={"status-" + order.status.toLowerCase()}>{STATUS_LABELS[order.status]}</span>
+                </span>
+                <span className="history-row-main">
+                  <strong>
+                    {moscowDay(order.slot_start_time) !== today && moscowDate(order.slot_start_time) + " · "}
+                    {pickupTime(order.slot_start_time, order.slot_end_time)}
+                  </strong>
+                  <strong>{money(order.total_amount)}</strong>
+                  <ChevronRight size={17} aria-hidden="true" />
+                </span>
+                <span className="history-composition">{order.items.map((item) => item.name_at_moment).join(", ")}</span>
+              </button>
+            ))}
+          </section>
+        )}
+        {remaining.length > 0 && (
+          <section className="history-earlier">
+            {highlighted.length > 0 && <h2>Другие заказы</h2>}
+            {remaining.map((order) => (
+              <button className="history-row" key={order.id} data-history-order={order.id} onClick={() => open(order.id)}>
+                <span className="history-row-main">
+                  <strong>{order.order_number}</strong>
+                  <span>{money(order.total_amount)}</span>
+                  <ChevronRight size={17} aria-hidden="true" />
+                </span>
+                <small>{moscowDate(order.slot_start_time)} · {pickupTime(order.slot_start_time, order.slot_end_time)} · {STATUS_LABELS[order.status]}</small>
+              </button>
+            ))}
+          </section>
+        )}
+        <div className="history-actions">
+          <button className="text-button" disabled={history.isFetching} onClick={() => void history.refetch()}>
+            {history.isError ? "Повторить" : "Обновить историю"}
           </button>
-        ))}
-      </div>
-      {history.data && !selected && (
-        <div className="order-pagination">
-          <button
-            className="text-button"
-            disabled={offset === 0 || history.isFetching}
-            onClick={() => setOffset(Math.max(0, offset - 10))}
-          >
-            Назад
-          </button>
-          <span>
-            Страница {offset / 10 + 1} · всего {history.data.total}
-          </span>
-          <button
-            className="text-button"
-            disabled={
-              offset + history.data.items.length >= history.data.total ||
-              history.isFetching
-            }
-            onClick={() => setOffset(offset + 10)}
-          >
-            Дальше
-          </button>
+          {history.data && (offset > 0 || history.data.total > 10) && (
+            <nav className="order-pagination" aria-label="Страницы истории">
+              <button className="text-button" disabled={offset === 0 || history.isFetching}
+                onClick={() => setOffset(Math.max(0, offset - 10))}>Назад</button>
+              <span>Страница {offset / 10 + 1}</span>
+              <button className="text-button" disabled={offset + orders.length >= history.data.total || history.isFetching}
+                onClick={() => setOffset(offset + 10)}>Дальше</button>
+            </nav>
+          )}
         </div>
+      </div>
+      {history.data && !orders.length && (
+        <BottomAction><button className="primary-button" onClick={onMenu}>В меню</button></BottomAction>
       )}
-      <p className="order-smallprint" hidden={!!selected}>
-        История может меняться между страницами. Время — московское, МСК.
-      </p>
-      {selected && (
-        <OrderTicket key={selected} accountId={accountId} id={selected} />
-      )}
-    </>
+    </section>
   );
 }
-function OrderTicket({ accountId, id }: { accountId: string; id: string }) {
-  const auth = useAuth(),
-    client = useQueryClient();
+
+type OrderViewProps = {
+  accountId: string;
+  id: string;
+  accepted: boolean;
+  onMenu: () => void;
+};
+
+export function OrderPanel({ onBack, ...order }: OrderViewProps & { onBack: () => void }) {
+  return (
+    <section className="scene order-scene">
+      <OrderTicket {...order} onBack={onBack} />
+    </section>
+  );
+}
+
+const orderStages = [
+  { status: "PENDING", label: "Принят" },
+  { status: "PREPARING", label: STATUS_LABELS.PREPARING },
+  { status: "READY", label: STATUS_LABELS.READY },
+  { status: "COMPLETED", label: STATUS_LABELS.COMPLETED },
+] as const;
+
+function OrderTicket({ accountId, id, accepted, onMenu, onBack }: OrderViewProps & { onBack?: () => void }) {
+  const auth = useAuth(), client = useQueryClient();
   const [busy, setBusy] = useState(false),
     [failure, setFailure] = useState("");
+  const [compositionOpen, setCompositionOpen] = useState(false);
   const [confirmCancellation, setConfirmCancellation] = useState(false);
-  const lock = useRef(false),
-    mounted = useRef(true);
+  const [now, setNow] = useState(() => Date.now());
+  const lock = useRef(false), mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
+    return () => { mounted.current = false; };
   }, []);
   const detail = useQuery({
     queryKey: ["own-orders", accountId, "detail", id],
-    queryFn: ({ signal }) =>
-      auth.withAccount(accountId, (t) => loadOrder(id, accountId, t, signal)),
+    queryFn: ({ signal }) => auth.withAccount(accountId, (t) => loadOrder(id, accountId, t, signal)),
     retry: 1,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
   });
   async function cancel(order: Order) {
-    if (lock.current || auth.busy) return;
+    if (lock.current || auth.busy || !canCancel(order, accountId)) return;
     lock.current = true;
     setBusy(true);
     setFailure("");
     setConfirmCancellation(false);
     try {
-      const result = await auth.withAccount(accountId, (t) =>
-        cancelOrder(order, accountId, t),
-      );
+      const result = await auth.withAccount(accountId, (t) => cancelOrder(order, accountId, t));
       if (mounted.current)
         client.setQueryData(["own-orders", accountId, "detail", id], result);
     } catch (error) {
       if (mounted.current)
-        setFailure(
-          `${orderFailure(error)} Обновляем статус перед следующим действием.`,
-        );
+        setFailure(orderFailure(error) + " Обновляем статус перед следующим действием.");
     } finally {
       lock.current = false;
       if (mounted.current) {
@@ -696,162 +687,107 @@ function OrderTicket({ accountId, id }: { accountId: string; id: string }) {
     }
   }
   const order = detail.data;
+  const pendingUntil = order?.status === "PENDING" ? Date.parse(order.slot_start_time) : 0;
+  useEffect(() => {
+    if (pendingUntil <= now) return;
+    const timer = window.setTimeout(() => setNow(Date.now()), Math.min(2_147_483_647, Math.max(0, pendingUntil - Date.now())));
+    return () => window.clearTimeout(timer);
+  }, [pendingUntil, now]);
+  const canRequestCancel = Boolean(order && canCancel(order, accountId, Math.max(now, Date.now())));
+  const cancellationDisabled = busy || auth.busy || detail.isFetching || detail.isError;
+  const showAccepted = accepted && order?.status === "PENDING";
+  const currentStage = orderStages.findIndex(({ status }) => status === order?.status);
+  const title = order
+    ? showAccepted ? "Заказ принят"
+      : order.status === "COMPLETED" ? "Заказ выдан"
+      : order.status === "CANCELLED" ? "Заказ отменён"
+      : STATUS_LABELS[order.status]
+    : accepted ? "Заказ принят" : "Заказ";
+  const guidance = order?.status === "READY" ? "Покажите номер на выдаче"
+    : showAccepted ? STATUS_LABELS.PENDING
+    : order?.status === "PREPARING" ? "Обед готовят в столовой"
+    : order?.status === "CANCELLED" ? "Выдача отменена"
+    : order?.status === "COMPLETED" ? "Приятного аппетита!" : "";
+
   return (
     <article className="order-ticket" aria-label="Талон заказа">
-      {order && (
-        <h2 className="ticket-screen-title">
-          {order.status === "READY"
-            ? "Можно забирать"
-            : order.status === "COMPLETED"
-              ? "Заказ выдан"
-              : order.status === "CANCELLED"
-                ? "Заказ отменён"
-                : order.status === "PENDING"
-                  ? "Заказ принят"
-                  : "Готовим ваш обед"}
-        </h2>
-      )}
-      <div className="ticket-heading">
-        <p className="eyebrow">Талон на выдачу</p>
-        <button
-          className="ticket-refresh"
-          aria-label="Обновить статус заказа"
-          disabled={detail.isFetching || busy}
-          onClick={() => void detail.refetch()}
-        >
-          <RefreshCw size={17} />
-        </button>
+      <div className="photo-banner plane-art order-banner" data-stage={order?.status}>
+        {onBack && <ScreenHeader onBack={onBack} />}
+        <div className="ticket-heading" aria-live="polite">
+          <h1 className={order ? "status-" + order.status.toLowerCase() : undefined}>{title}</h1>
+          {order && <p className="order-number">{order.order_number}</p>}
+          {guidance && <p className="ticket-guidance">{guidance}</p>}
+        </div>
+        {currentStage >= 0 && (
+          <ol className="order-progress" aria-label="Этапы заказа">
+            {orderStages.map(({ status, label }, index) => (
+              <li key={status} aria-current={index === currentStage ? "step" : undefined}
+                data-complete={index <= currentStage}>
+                <span className="sr-only">{label}</span>
+              </li>
+            ))}
+          </ol>
+        )}
       </div>
-      {detail.isPending ? (
-        <p role="status">Проверяем актуальный статус…</p>
-      ) : detail.isError ? (
-        <p role="alert">{orderFailure(detail.error)}</p>
-      ) : null}
-      {order && (
-        <>
-          <div className="boarding-pass">
-            <p className="boarding-caption">МАИ ЕДА / К ПОЛУЧЕНИЮ</p>
-            <h3>{order.order_number}</h3>
-            <p className={`order-status status-${order.status.toLowerCase()}`}>
-              {STATUS_LABELS[order.status]}
+      <div className="screen-content ticket-content">
+        <div className="pickup-label">
+          <span>Время выдачи</span>
+          <button className="text-button" disabled={detail.isFetching || busy}
+            onClick={() => void detail.refetch()}>Обновить</button>
+        </div>
+        {detail.isPending && <p role="status">Проверяем статус…</p>}
+        {detail.isError && (
+          <p role="alert">{orderFailure(detail.error)}{order && " Показан последний загруженный статус."}</p>
+        )}
+        {order && (
+          <>
+            <p className="pickup-time">
+              <strong>{pickupTime(order.slot_start_time, order.slot_end_time)}</strong> <span>МСК</span>
             </p>
-            <p className="ticket-time">
-              <span>ВРЕМЯ ПОЛУЧЕНИЯ</span>
-              <strong>
-                {new Intl.DateTimeFormat("ru-RU", {
-                  timeZone: "Europe/Moscow",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                }).format(new Date(order.slot_start_time))}
-                –
-                {new Intl.DateTimeFormat("ru-RU", {
-                  timeZone: "Europe/Moscow",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                }).format(new Date(order.slot_end_time))}
-              </strong>
-              <small>
-                {formatSlot(order.slot_start_time, order.slot_end_time)}
-              </small>
-            </p>
-
-            <div className="ticket-total">
-              <span>Сумма заказа</span>
-              <strong>{money(order.total_amount)}</strong>
-            </div>
-            <p className="payment-evidence" role="status">
-              {paymentLabel(order.payment_status)}
-            </p>
-          </div>
-          {order.status !== "CANCELLED" && (
-            <ol className="order-progress" aria-label="Этапы заказа">
-              {["Принят", "Готовим", "Готов"].map((label, index) => (
-                <li
-                  key={label}
-                  data-complete={
-                    index <=
-                    ["PENDING", "PREPARING", "READY", "COMPLETED"].indexOf(
-                      order.status,
-                    )
-                  }
-                >
-                  {label}
-                </li>
-              ))}
-            </ol>
-          )}
-          <details className="ticket-composition">
-            <summary>Состав заказа · {order.items.length}</summary>
-            <ul>
-              {order.items.map((item) => (
-                <li key={item.id}>
-                  <span>
-                    {item.name_at_moment} × {item.quantity}
-                  </span>
-                  <strong>{money(item.price_at_moment * item.quantity)}</strong>
-                </li>
-              ))}
-            </ul>
-          </details>
-          {order.payment_status === "DEMO_REFUNDED" && (
-            <p className="order-smallprint">
-              Возврат подтверждён сервером. Повторная проверка не создаёт новый
-              возврат.
-            </p>
-          )}
-          <p className="order-smallprint">
-            Покажите номер сотруднику. Статус — по последнему обновлению.
-          </p>
-          {canCancel(order, accountId) && (
-            <button
-              className="cancel-order"
-              disabled={
-                busy || auth.busy || detail.isFetching || detail.isError
-              }
-              onClick={() => setConfirmCancellation(true)}
-            >
-              {busy ? "Проверяем отмену…" : "Отменить заказ"}
-            </button>
-          )}
-          {confirmCancellation && canCancel(order, accountId) && (
-            <div
-              className="cancellation-confirmation"
-              role="alertdialog"
-              aria-label="Подтверждение отмены заказа"
-            >
-              <p>Отменить заказ {order.order_number}?</p>
-              <button
-                className="text-button"
-                autoFocus
-                onClick={() => setConfirmCancellation(false)}
-              >
-                Сохранить заказ
-              </button>
-              <button
-                className="cancel-order"
-                disabled={
-                  busy || auth.busy || detail.isFetching || detail.isError
-                }
-                onClick={() => void cancel(order)}
-              >
-                Да, отменить заказ
-              </button>
-            </div>
-          )}
-          {!canCancel(order, accountId) && order.status !== "CANCELLED" && (
-            <p className="order-smallprint">
-              Отмена доступна только до приготовления и начала выбранного
-              времени.
-            </p>
-          )}
-        </>
-      )}
-      {failure && (
-        <p role="alert" className="order-feedback">
-          <AlertCircle size={16} />
-          {failure}
-        </p>
-      )}
+            <p>{moscowDate(order.slot_start_time)} · {CAMPUS}</p>
+            <details className="ticket-composition" onToggle={(event) => setCompositionOpen(event.currentTarget.open)}>
+              <summary>
+                <span>Состав · {portionLabel(totalPortions(order.items))}</span>
+                <strong>{money(order.total_amount)}</strong>
+              </summary>
+              <ul>
+                {order.items.map((item) => (
+                  <li key={item.id}>
+                    <ReceiptPhoto id={item.menu_item_id} visible={compositionOpen} />
+                    <span>{item.name_at_moment}{item.quantity > 1 && <small>{item.quantity} × {money(item.price_at_moment)}</small>}</span>
+                    <strong>{money(item.price_at_moment * item.quantity)}</strong>
+                  </li>
+                ))}
+              </ul>
+            </details>
+            <p className="payment-evidence" role="status">{paymentLabel(order.payment_status)}</p>
+            {canRequestCancel && (
+              <button className="text-button danger-button cancel-order" disabled={cancellationDisabled}
+                onClick={() => setConfirmCancellation(true)}>Отменить заказ</button>
+            )}
+            {confirmCancellation && canRequestCancel && (
+              <Sheet title={"Отменить заказ " + order.order_number + "?"} alert onDismiss={() => setConfirmCancellation(false)}>
+                <button className="primary-button" autoFocus onClick={() => setConfirmCancellation(false)}>Оставить заказ</button>
+                <button className="text-button danger-button" disabled={cancellationDisabled}
+                  onClick={() => void cancel(order)}>Отменить заказ</button>
+              </Sheet>
+            )}
+          </>
+        )}
+        {failure && <p role="alert" className="order-feedback">{failure}</p>}
+      </div>
+      <BottomAction><button className="primary-button" onClick={onMenu}>Вернуться в меню</button></BottomAction>
     </article>
   );
+}
+
+function ReceiptPhoto({ id, visible }: { id: string; visible: boolean }) {
+  const item = useQuery({
+    queryKey: ["menu-item", id],
+    queryFn: ({ signal }) => loadItem(id, signal),
+    enabled: visible,
+    staleTime: 30000,
+    retry: false,
+  });
+  return <DishPhoto item={item.data ?? { image_url: null }} />;
 }

@@ -1,9 +1,9 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { useState } from "react";
-import { CheckoutPanel, OrdersPanel } from "@/components/order-workspace";
+import { CheckoutPanel, OrderPanel } from "@/components/order-workspace";
 import {
   JOURNAL_KEY,
   createIntent,
@@ -68,17 +68,25 @@ function fixture(body: Record<string, unknown>, owner = state.userId) {
 }
 function Harness() {
   const [cart, setCart] = useState([{ id: dish, quantity: 1 }]);
+  const [order, setOrder] = useState<{ id: string; accepted: boolean } | null>(null);
   return (
     <QueryClientProvider client={client}>
-      <CheckoutPanel
+      <div hidden={Boolean(order)}><CheckoutPanel
+        active={!order}
+        items={[]}
+        onBack={() => {}}
+        onHistory={() => {}}
+        onMenu={() => {}}
+        onOrder={(id, accepted) => setOrder({ id, accepted })}
+        onJournal={() => {}}
         cart={cart}
         total={cart.length ? 14500 : 0}
         onComplete={(intent) => {
           complete(intent);
           setCart([]);
         }}
-      />
-      <OrdersPanel />
+      /></div>
+      {order && <OrderPanel accountId={state.userId} {...order} onBack={() => {}} onMenu={() => {}} />}
     </QueryClientProvider>
   );
 }
@@ -134,6 +142,7 @@ beforeEach(() => {
             },
             { status: 409 },
           );
+        if (mode === "full") return Response.json({ detail: { code: "SLOT_FULL" } }, { status: 409 });
         if (mode === "insufficient") return Response.json({ detail: { code: "INSUFFICIENT_FUNDS" } }, { status: 409 });
         let order = original.get(key);
         if (!order) {
@@ -189,16 +198,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 async function selectSlot() {
-  await screen.findByRole("option", { name: /МСК · мест/ });
-  await userEvent.selectOptions(
-    await screen.findByLabelText("Когда заберёте обед · МСК"),
-    slot,
-  );
+  await userEvent.click(await screen.findByRole("button", { name: /12:00–12:30 · Есть места/ }));
 }
 async function submit() {
   await selectSlot();
   await userEvent.click(
-    screen.getByRole("button", { name: /Заказать за 145/ }),
+    screen.getByRole("button", { name: /Подтвердить · 145/ }),
   );
 }
 
@@ -229,12 +234,12 @@ test("fresh changed-price rejection needs a separate explicit confirmation and f
   mode = "price";
   render(<Harness />);
   await submit();
-  await screen.findByRole("button", { name: /Подтвердить новую сумму 155/ });
+  await screen.findByRole("button", { name: /Подтвердить новую сумму · 155/ });
   expect(postCalls).toHaveLength(1);
   expect(readIntent(sessionStorage)).toBeNull();
   mode = "normal";
   await userEvent.dblClick(
-    screen.getByRole("button", { name: /Подтвердить новую сумму 155/ }),
+    screen.getByRole("button", { name: /Подтвердить новую сумму · 155/ }),
   );
   await waitFor(() => expect(complete).toHaveBeenCalledTimes(1));
   expect(postCalls).toHaveLength(2);
@@ -321,12 +326,12 @@ test("cancellation needs inline confirmation; version conflict refreshes to prep
   await userEvent.click(screen.getByRole("button", { name: "Отменить заказ" }));
   expect(orders[Object.keys(orders)[0]].status).toBe("PENDING");
   await userEvent.click(
-    await screen.findByRole("button", { name: "Сохранить заказ" }),
+    await screen.findByRole("button", { name: "Оставить заказ" }),
   );
   expect(orders[Object.keys(orders)[0]].status).toBe("PENDING");
   await userEvent.click(screen.getByRole("button", { name: "Отменить заказ" }));
   await userEvent.click(
-    screen.getByRole("button", { name: "Да, отменить заказ" }),
+    within(screen.getByRole("alertdialog")).getByRole("button", { name: "Отменить заказ" }),
   );
   await waitFor(() =>
     expect(orders[Object.keys(orders)[0]].status).toBe("PREPARING"),
@@ -352,7 +357,7 @@ test("known created order remains visible when local journal cleanup fails", asy
   expect(complete).not.toHaveBeenCalled();
   expect(readIntent(sessionStorage)).not.toBeNull();
   await screen.findByRole("article", { name: "Талон заказа" });
-  expect(screen.queryByRole("button", { name: /Заказать за/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /Подтвердить ·/ })).toBeNull();
 });
 
 
@@ -365,7 +370,7 @@ test("demo funds and refund evidence follow server responses, not a local succes
   await screen.findAllByText("Оплачено демосредствами");
   expect(walletBalance).toBe(85500);
   await userEvent.click(screen.getByRole("button", { name: "Отменить заказ" }));
-  await userEvent.click(screen.getByRole("button", { name: "Да, отменить заказ" }));
+  await userEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Отменить заказ" }));
   await screen.findAllByText("Демосредства возвращены");
   expect(walletBalance).toBe(100000);
   expect(screen.queryByRole("button", { name: "Отменить заказ" })).toBeNull();
@@ -375,11 +380,11 @@ test("wallet outage blocks new checkout and explicit refresh recovers", async ()
   render(<Harness />);
   await selectSlot();
   await screen.findByText(/Не удалось обновить демобаланс/);
-  expect((screen.getByRole("button", { name: /Заказать за 145/ }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: /Подтвердить · 145/ }) as HTMLButtonElement).disabled).toBe(true);
   expect(postCalls).toHaveLength(0);
   walletFails = false;
   await userEvent.click(screen.getByRole("button", { name: "Обновить демобаланс" }));
-  await waitFor(() => expect((screen.getByRole("button", { name: /Заказать за 145/ }) as HTMLButtonElement).disabled).toBe(false));
+  await waitFor(() => expect((screen.getByRole("button", { name: /Подтвердить · 145/ }) as HTMLButtonElement).disabled).toBe(false));
 });
 test("insufficient funds never fabricate payment and refresh never automatically retries checkout", async () => {
   walletEnabled = true;
@@ -409,4 +414,46 @@ test("unknown paid ACK keeps the original key even when wallet becomes unavailab
   expect(postCalls[0]).toEqual(postCalls[1]);
   expect(walletBalance).toBe(85500);
   await screen.findAllByText("Оплачено демосредствами");
+});
+
+test("an unavailable slot preserves the basket and returns focus to refreshed intervals", async () => {
+  mode = "full";
+  render(<Harness />);
+  await submit();
+  await screen.findByRole("heading", { name: "Время уже занято" });
+  expect(complete).not.toHaveBeenCalled();
+  expect(readIntent(sessionStorage)).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Выбрать другое время" }));
+  const heading = await screen.findByRole("heading", { name: "Интервалы выдачи" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  expect(screen.getByRole("button", { name: /12:00–12:30 · Есть места/ }).getAttribute("aria-pressed")).toBe("false");
+  expect(postCalls).toHaveLength(1);
+});
+test("order stages illuminate one segment at a time and cancellation stays separate", async () => {
+  render(<Harness />);
+  await submit();
+  const ticket = await screen.findByRole("article", { name: "Талон заказа" });
+  const stageList = await within(ticket).findByRole("list", { name: "Этапы заказа" });
+  const countSegments = () => stageList.querySelectorAll("[data-complete='true']").length;
+  const banner = ticket.querySelector(".order-banner");
+  expect(banner?.getAttribute("data-stage")).toBe("PENDING");
+  expect(countSegments()).toBe(1);
+  for (const [status, heading, count] of [
+    ["PREPARING", "Готовится", 2],
+    ["READY", "Готов к выдаче", 3],
+    ["COMPLETED", "Заказ выдан", 4],
+  ] as const) {
+    const id = Object.keys(orders)[0];
+    orders[id] = { ...orders[id], status };
+    await userEvent.click(within(ticket).getByRole("button", { name: "Обновить" }));
+    await within(ticket).findByRole("heading", { name: heading });
+    expect(banner?.getAttribute("data-stage")).toBe(status);
+    expect(countSegments()).toBe(count);
+    expect(stageList.children[count - 1].getAttribute("aria-current")).toBe("step");
+  }
+  const id = Object.keys(orders)[0];
+  orders[id] = { ...orders[id], status: "CANCELLED" };
+  await userEvent.click(within(ticket).getByRole("button", { name: "Обновить" }));
+  await within(ticket).findByRole("heading", { name: "Заказ отменён" });
+  expect(within(ticket).queryByRole("list", { name: "Этапы заказа" })).toBeNull();
 });

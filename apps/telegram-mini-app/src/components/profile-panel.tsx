@@ -1,60 +1,48 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
-import { ArrowRight, LogOut, RefreshCw, UserRound } from "lucide-react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { ChevronRight } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
+import { ScreenHeader, Sheet } from "@/components/customer-ui";
 import type { UserProfile } from "@/lib/auth";
 
-export function ProfilePanel() {
+export function ProfilePanel({ onBack, onHistory }: { onBack: () => void; onHistory: () => void }) {
   const auth = useAuth();
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const { refreshProfile } = auth;
+  const [profile, setProfile] = useState<UserProfile | null>(auth.credentials?.user ?? null);
   const [name, setName] = useState("");
-  const [loadingProfile, setLoadingProfile] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [failure, setFailure] = useState("");
+  const [profileError, setProfileError] = useState("");
 
-  useEffect(() => {
-    if (auth.status !== "authenticated") {
-      setProfile(null);
-      setName("");
-      return;
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setProfileError("");
+    try {
+      setProfile(await refreshProfile());
+    } catch {
+      setProfileError("Не удалось обновить профиль.");
+    } finally {
+      setLoading(false);
     }
-    let current = true;
-    setProfile(auth.credentials?.user ?? null);
-    setName(auth.credentials?.user.full_name ?? "");
-    setLoadingProfile(true);
-    void auth
-      .refreshProfile()
-      .then((value) => {
-        if (!current) return;
-        setProfile(value);
-        setName(value.full_name);
-        setFailure("");
-      })
-      .catch(() => {
-        if (current) setFailure("Не удалось обновить профиль. Повторите попытку.");
-      })
-      .finally(() => {
-        if (current) setLoadingProfile(false);
-      });
-    return () => {
-      current = false;
-    };
-  }, [auth.status, auth.credentials?.user.id, auth.refreshProfile]);
+  }, [refreshProfile]);
+  useEffect(() => { void refresh(); }, [refresh]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving || !name.trim()) return;
     setSaving(true);
     setFailure("");
     setMessage("");
     try {
-      const updated = await auth.saveFullName(name);
-      setProfile(updated);
-      setName(updated.full_name);
+      setProfile(await auth.saveFullName(name));
+      setEditing(false);
       setMessage("Имя сохранено.");
     } catch {
-      setFailure("Не удалось сохранить имя. Проверьте подключение и повторите попытку.");
+      setFailure("Не удалось сохранить имя. Попробуйте ещё раз.");
     } finally {
       setSaving(false);
     }
@@ -65,98 +53,73 @@ export function ProfilePanel() {
     setMessage("");
     try {
       await auth.signOut();
-      setProfile(null);
-      setName("");
-      setMessage("Вы вышли из профиля.");
     } catch {
       setFailure("Сессию не удалось завершить. Попробуйте ещё раз.");
     }
   }
 
-  async function switchAccount() {
-    setFailure("");
-    setMessage("");
-    const succeeded = await auth.switchAccount();
-    if (succeeded) setMessage("Аккаунт Telegram подтверждён.");
-    else setFailure(auth.error ?? "Не удалось подтвердить аккаунт Telegram.");
-  }
-
   return (
-    <section id="profile" className="profile-section" aria-labelledby="profile-heading">
-      <div className="profile-heading">
-        <div>
-          <p className="eyebrow">Ваш аккаунт</p>
-          <h2 id="profile-heading">Профиль</h2>
-        </div>
-        <UserRound size={24} aria-hidden="true" />
+    <section className="scene profile-scene" aria-labelledby="profile-heading">
+      <div className="photo-banner plane-art profile-banner">
+        <ScreenHeader onBack={onBack} />
+        {profile && (
+          <>
+            <span className="profile-avatar" aria-hidden="true">{Array.from(profile.full_name.trim())[0]?.toLocaleUpperCase("ru")}</span>
+            <p className="profile-name">{profile.full_name}</p>
+            {profile.username && <p>@{profile.username}</p>}
+          </>
+        )}
       </div>
-
-      {auth.status === "loading" ? (
-        <p className="profile-note" role="status">Проверяем вход в аккаунт…</p>
-      ) : auth.status === "authenticated" ? (
-        <>
-          {profile && (
-            <form className="profile-form" onSubmit={submit}>
-              <label htmlFor="profile-full-name">Имя</label>
-              <input
-                id="profile-full-name"
-                name="full_name"
-                autoComplete="name"
-                required
-                minLength={1}
-                maxLength={256}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                disabled={saving || loadingProfile || auth.busy}
-              />
-              {profile.username && (
-                <p className="profile-note">Telegram: @{profile.username}</p>
-              )}
-              <div className="profile-actions">
-                <button className="primary-button" type="submit" disabled={saving || loadingProfile || auth.busy}>
-                  {saving ? "Сохраняем…" : "Сохранить имя"}
-                  <ArrowRight size={17} aria-hidden="true" />
-                </button>
-                {auth.canUseTelegram && (
-                  <button className="text-button" type="button" onClick={() => void switchAccount()} disabled={auth.busy}>
-                    Сменить аккаунт Telegram
-                  </button>
-                )}
-                <button className="profile-logout" type="button" onClick={() => void signOut()} disabled={auth.busy}>
-                  <LogOut size={16} aria-hidden="true" /> Выйти
-                </button>
-              </div>
-            </form>
-          )}
-          {!profile && (
-            <div className="profile-state" role="status">
-              <p>{loadingProfile ? "Загружаем профиль…" : "Профиль не загрузился."}</p>
-              <button className="text-button" type="button" onClick={() => void auth.refreshProfile()} disabled={auth.busy}>
-                <RefreshCw size={15} aria-hidden="true" /> Повторить
-              </button>
-            </div>
-          )}
-        </>
-      ) : (
-        <div className="profile-state">
-          <p>{auth.error ?? "Войдите через Telegram, чтобы открыть профиль."}</p>
-          {auth.canUseTelegram ? (
-            <button className="primary-button" type="button" onClick={() => void auth.signIn()} disabled={auth.busy}>
-              {auth.busy ? "Проверяем…" : "Войти через Telegram"}
-              <ArrowRight size={17} aria-hidden="true" />
-            </button>
-          ) : (
-            <p className="profile-note">Откройте приложение внутри Telegram.</p>
-          )}
-          <button className="text-button" type="button" onClick={() => void auth.retry()} disabled={auth.busy}>
-            <RefreshCw size={15} aria-hidden="true" /> Проверить сессию снова
+      <div className="screen-content profile-content">
+        <h1 id="profile-heading">Профиль</h1>
+        {loading && <p className="sr-only" role="status">Загружаем профиль…</p>}
+        {profile && (
+          <button className="profile-row" disabled={loading || auth.busy} onClick={() => {
+            setName(profile.full_name);
+            setFailure("");
+            setMessage("");
+            setEditing(true);
+          }}>
+            <span>Имя</span><small>{profile.full_name}</small><ChevronRight size={16} aria-hidden="true" />
           </button>
-        </div>
-      )}
-      {(failure || auth.error || message) && (
-        <p className={failure || auth.error ? "profile-feedback error" : "profile-feedback"} role="status">
-          {failure || auth.error || message}
-        </p>
+        )}
+        {auth.credentials?.user.role === "CLIENT" && (
+          <button className="profile-row" onClick={onHistory}>
+            <span>История заказов</span><ChevronRight size={16} aria-hidden="true" />
+          </button>
+        )}
+        <button className="profile-row" disabled={auth.busy || saving} onClick={() => void signOut()}>
+          <span>Выйти</span><ChevronRight size={16} aria-hidden="true" />
+        </button>
+        {auth.canUseTelegram && (
+          <button className="text-button profile-switch" disabled={auth.busy || saving}
+            onClick={async () => {
+              setMessage("");
+              setFailure("");
+              if (await auth.switchAccount()) {
+                setMessage("Аккаунт Telegram подтверждён.");
+                await refresh();
+              }
+            }}>Сменить аккаунт Telegram</button>
+        )}
+        {profileError && (
+          <p role="alert">{profileError} <button className="text-button" onClick={() => void refresh()}>Повторить</button></p>
+        )}
+        {!editing && (failure || auth.error) && <p role="alert" className="error-text">{failure || auth.error}</p>}
+        {message && <p role="status">{message}</p>}
+      </div>
+      {editing && (
+        <Sheet title="Изменить имя" onDismiss={() => { if (!saving) setEditing(false); }}>
+          <form onSubmit={submit} className="profile-form">
+            <label htmlFor="profile-name">Имя</label>
+            <input id="profile-name" autoComplete="name" required maxLength={256} autoFocus
+              value={name} onChange={(event) => setName(event.target.value)} disabled={saving || auth.busy} />
+            {failure && <p role="alert" className="error-text">{failure}</p>}
+            <button className="primary-button" disabled={saving || auth.busy || !name.trim()}>
+              {saving ? "Сохраняем…" : "Сохранить имя"}
+            </button>
+          </form>
+        </Sheet>
       )}
     </section>
   );

@@ -2,7 +2,7 @@ export const MAX_INTEGER = 2 ** 31 - 1;
 export const CART_KEY = "mai-food:public-cart:v1";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type Category = { id: string; name: string; sort_order: number };
+export type Category = { id: string; name: string; sort_order: number; published_item_count?: number };
 export type MenuItem = {
   id: string;
   category_id: string;
@@ -10,6 +10,9 @@ export type MenuItem = {
   price: number;
   description: string | null;
   image_url: string | null;
+  menu_image_url?: string | null;
+  detail_image_url?: string | null;
+  remaining_quantity?: number | null;
   is_available: boolean;
 };
 export type ItemPage = {
@@ -56,12 +59,17 @@ export function decodeItem(value: unknown): MenuItem {
     name: text(row.name, 256),
     price: integer(row.price),
     is_available: row.is_available !== false,
+    ...(row.remaining_quantity !== undefined && {
+      remaining_quantity: row.remaining_quantity === null ? null : integer(row.remaining_quantity),
+    }),
     description:
       row.description == null
         ? null
         : row.description === ""
           ? ""
           : text(row.description, 10000),
+    ...(row.menu_image_url !== undefined && { menu_image_url: row.menu_image_url === null ? null : text(row.menu_image_url, 2048) }),
+    ...(row.detail_image_url !== undefined && { detail_image_url: row.detail_image_url === null ? null : text(row.detail_image_url, 2048) }),
     image_url:
       row.image_url == null
         ? null
@@ -101,6 +109,7 @@ export function decodeCategories(value: unknown): Category[] {
       id: uuid(row.id),
       name: text(row.name, 128),
       sort_order: (row.sort_order as number | undefined) ?? 0,
+      ...(row.published_item_count != null && { published_item_count: integer(row.published_item_count) }),
     };
   });
   if (
@@ -212,12 +221,16 @@ export function decodeCart(raw: string): CartLine[] {
     throw new Error("Duplicate cart line");
   return items;
 }
+export function availablePortions(item: Pick<MenuItem, "is_available" | "remaining_quantity">): number {
+  return item.is_available ? item.remaining_quantity ?? MAX_INTEGER : 0;
+}
+
 export function cartTotal(cart: CartLine[], items: MenuItem[]): number | null {
   let total = 0;
   const current = new Map(items.map((item) => [item.id, item]));
   for (const line of cart) {
     const item = current.get(line.id);
-    if (!item || !item.is_available) return null;
+    if (!item || line.quantity > availablePortions(item)) return null;
     total += item.price * line.quantity;
     if (!Number.isSafeInteger(total) || total > MAX_INTEGER) return null;
   }

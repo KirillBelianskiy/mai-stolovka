@@ -1,6 +1,70 @@
 {
   "components": {
     "schemas": {
+      "Body_create_item_with_photos_admin_items_upload_post": {
+        "properties": {
+          "detail_photo": {
+            "contentMediaType": "application/octet-stream",
+            "title": "Detail Photo",
+            "type": "string"
+          },
+          "item_json": {
+            "maxLength": 20000,
+            "title": "Item Json",
+            "type": "string"
+          },
+          "menu_photo": {
+            "contentMediaType": "application/octet-stream",
+            "title": "Menu Photo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_json",
+          "menu_photo",
+          "detail_photo"
+        ],
+        "title": "Body_create_item_with_photos_admin_items_upload_post",
+        "type": "object"
+      },
+      "Body_update_item_with_photos_admin_items__item_id__upload_put": {
+        "properties": {
+          "detail_photo": {
+            "anyOf": [
+              {
+                "contentMediaType": "application/octet-stream",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail Photo"
+          },
+          "item_json": {
+            "maxLength": 20000,
+            "title": "Item Json",
+            "type": "string"
+          },
+          "menu_photo": {
+            "anyOf": [
+              {
+                "contentMediaType": "application/octet-stream",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Menu Photo"
+          }
+        },
+        "required": [
+          "item_json"
+        ],
+        "title": "Body_update_item_with_photos_admin_items__item_id__upload_put",
+        "type": "object"
+      },
       "CategoryRead": {
         "additionalProperties": false,
         "properties": {
@@ -14,6 +78,18 @@
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "published_item_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published Item Count"
           },
           "sort_order": {
             "default": 0,
@@ -135,6 +211,18 @@
             ],
             "title": "Description"
           },
+          "detail_image_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail Image Url"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -157,6 +245,18 @@
             "title": "Is Available",
             "type": "boolean"
           },
+          "menu_image_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Menu Image Url"
+          },
           "name": {
             "maxLength": 256,
             "minLength": 1,
@@ -168,6 +268,19 @@
             "minimum": 0.0,
             "title": "Price",
             "type": "integer"
+          },
+          "remaining_quantity": {
+            "anyOf": [
+              {
+                "maximum": 2147483647.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remaining Quantity"
           }
         },
         "required": [
@@ -237,6 +350,70 @@
         "title": "ItemWrite",
         "type": "object"
       },
+      "SnapshotItem": {
+        "additionalProperties": false,
+        "properties": {
+          "category_id": {
+            "format": "uuid",
+            "title": "Category Id",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "is_available": {
+            "default": true,
+            "title": "Is Available",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "price": {
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Price",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "category_id",
+          "name",
+          "price",
+          "id"
+        ],
+        "title": "SnapshotItem",
+        "type": "object"
+      },
       "SnapshotRequest": {
         "additionalProperties": false,
         "properties": {
@@ -261,7 +438,7 @@
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/ItemRead"
+              "$ref": "#/components/schemas/SnapshotItem"
             },
             "title": "Items",
             "type": "array"
@@ -383,6 +560,110 @@
           }
         ],
         "summary": "Admin Items",
+        "tags": [
+          "menu"
+        ]
+      }
+    },
+    "/admin/items/upload": {
+      "post": {
+        "operationId": "create_item_with_photos_admin_items_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_item_with_photos_admin_items_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Item With Photos",
+        "tags": [
+          "menu"
+        ]
+      }
+    },
+    "/admin/items/{item_id}/upload": {
+      "put": {
+        "operationId": "update_item_with_photos_admin_items__item_id__upload_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_update_item_with_photos_admin_items__item_id__upload_put"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Item With Photos",
         "tags": [
           "menu"
         ]
@@ -887,6 +1168,68 @@
           }
         ],
         "summary": "Update Item",
+        "tags": [
+          "menu"
+        ]
+      }
+    },
+    "/photos/{item_id}/{kind}/{version}": {
+      "get": {
+        "operationId": "item_photo_photos__item_id___kind___version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "menu",
+                "detail"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/webp": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Item Photo",
         "tags": [
           "menu"
         ]

@@ -68,6 +68,7 @@ services:
   menu-service:
     build: ./services/menu-service
     environment:
+      APP_ORDER_BASE_URL: http://order-service:8000
       APP_JWT_PUBLIC_KEY_BASE64: ${JWT_PUBLIC_KEY_BASE64:-}
       APP_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       APP_DATABASE_URL: postgresql+asyncpg://menu_owner:${MENU_DB_PASSWORD:?Set MENU_DB_PASSWORD in .env}@postgres:5432/menu_db

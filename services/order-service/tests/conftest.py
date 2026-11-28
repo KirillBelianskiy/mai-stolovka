@@ -79,7 +79,7 @@ def integration_settings(auth_keys: tuple[bytes, bytes]) -> Settings:
         connection = await asyncpg.connect(url.replace("postgresql+asyncpg://", "postgresql://"))
         try:
             await connection.execute(
-                "TRUNCATE demo_ledger, demo_credit_requests, demo_wallets, "
+                "TRUNCATE dish_stock, demo_ledger, demo_credit_requests, demo_wallets, "
                 "outbox_events, idempotency_records, order_items, "
                 "orders, time_slots CASCADE"
             )

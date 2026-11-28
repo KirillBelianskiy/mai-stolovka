@@ -174,13 +174,19 @@ def test_price_confirmation_and_menu_failure_leave_no_reservation(
 
 def test_outbox_failure_rolls_back_every_write(integration_client, integration_settings, auth_keys):
     client = integration_client
-    _, body, _ = prepare(client, auth_keys[0])
+    admin, body, _ = prepare(client, auth_keys[0])
+    item = body["items"][0]["menu_item_id"]
+    assert (
+        client.put(f"/inventory/{item}", headers=admin, json={"remaining_quantity": 2}).status_code
+        == 200
+    )
     db_query(
         integration_settings,
         "ALTER TABLE outbox_events ADD CONSTRAINT test_reject_outbox CHECK (false) NOT VALID",
     )
     try:
         assert submit(client, body, auth(auth_keys[0])).status_code == 503
+        assert client.post("/internal/menu-stock", json={"item_ids": [item]}).json() == {item: 2}
         assert counts(integration_settings) == {
             "orders": 0,
             "items": 0,
@@ -539,3 +545,26 @@ def test_slot_lock_timeout_rolls_back_claim(integration_client, integration_sett
             release.set()
             future.result(timeout=5)
     assert all(value == 0 for value in counts(integration_settings).values())
+
+
+def test_competing_orders_reserve_stock_once_and_cancel_restores_it(integration_client, auth_keys):
+    client = integration_client
+    admin, body, _ = prepare(client, auth_keys[0])
+    item = body["items"][0]["menu_item_id"]
+    path = f"/inventory/{item}"
+    stock = {"remaining_quantity": 2}
+    shoppers = [(auth(auth_keys[0]), uuid4()) for _ in range(2)]
+    assert client.put(path, headers=shoppers[0][0], json=stock).status_code == 403
+    assert client.put(path, headers=admin, json=stock).status_code == 200
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda shopper: submit(client, body, *shopper), shoppers))
+    assert sorted(r.status_code for r in results) == [201, 409]
+    winner = next(i for i, r in enumerate(results) if r.status_code == 201)
+    assert results[1 - winner].json()["detail"]["code"] == "INSUFFICIENT_STOCK"
+    assert client.post("/internal/menu-stock", json={"item_ids": [item]}).json() == {item: 0}
+    replay = submit(client, body, *shoppers[winner])
+    assert replay.headers["idempotency-replayed"] == "true"
+    cancel_path = f"/{replay.json()['id']}/cancel"
+    assert client.post(cancel_path, headers=admin, json={"expected_version": 1}).status_code == 200
+    assert client.post(cancel_path, headers=admin, json={"expected_version": 1}).status_code == 200
+    assert client.post("/internal/menu-stock", json={"item_ids": [item]}).json() == {item: 2}

@@ -11,9 +11,6 @@ import routes.caddy
 	request_header -X-Original-*
 	request_header -X-Rewrite-*
 	request_header -X-MAI-*
-	request_body {
-		max_size 128KB
-	}
 	@noncanonical expression `path_regexp('(?i)^/api(/|$)') && {http.request.orig_uri}.matches('^[^?]*(%|//|/[.]{1,2}(/|[?]|$))')`
 	respond @noncanonical 404
 }
@@ -27,9 +24,12 @@ maistolovka.me {
 	import edge_http
 	route {
 		import clean
+		request_body {
+			max_size 128KB
+		}
 		@menu {
 			method GET
-			path_regexp ^/api/v1/menu/(categories|items(/[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})?)$
+			path_regexp ^/api/v1/menu/(photos/[0-9a-f-]{36}/(menu|detail)/[0-9a-f-]{36}|categories|items(/[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})?)$
 		}
 		handle @menu {
 			uri strip_prefix /api/v1/menu
@@ -87,6 +87,17 @@ kitchen.maistolovka.me {
 		respond @outside 403
 		header Cache-Control no-store
 		import clean
+		@upload expression `({method} == 'POST' && {path} == '/api/v1/menu/admin/items/upload') || ({method} == 'PUT' && path_regexp('^/api/v1/menu/admin/items/[0-9a-f-]{36}/upload$'))`
+		handle @upload {
+			request_body {
+				max_size 11MiB
+			}
+			uri strip_prefix /api/v1/menu
+			reverse_proxy menu-service:8000
+		}
+		request_body {
+			max_size 128KB
+		}
 		@staff_login {
 			method POST
 			path /api/v1/users/auth/staff
@@ -105,12 +116,12 @@ kitchen.maistolovka.me {
 		handle /api/v1/ws/kitchen {
 			reverse_proxy websocket-service:8000
 		}
-		@staff_menu path_regexp ^/api/v1/menu/(categories(/[^/]+)?|items(/[^/]+)?|admin/items)$
+		@staff_menu path_regexp ^/api/v1/menu/(photos/[0-9a-f-]{36}/(menu|detail)/[0-9a-f-]{36}|categories(/[^/]+)?|items(/[^/]+)?|admin/items)$
 		handle @staff_menu {
 			uri strip_prefix /api/v1/menu
 			reverse_proxy menu-service:8000
 		}
-		@staff_orders path_regexp ^/api/v1/orders/($|wallet/credits$|slots(/[^/]+)?$|[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}(/(status|cancel))?$)
+		@staff_orders path_regexp ^/api/v1/orders/($|wallet/credits$|inventory/[0-9a-f-]{36}$|slots(/[^/]+)?$|[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}(/(status|cancel))?$)
 		handle @staff_orders {
 			uri strip_prefix /api/v1/orders
 			reverse_proxy order-service:8000

@@ -55,7 +55,7 @@ import routes.caddy
 
 		@menu {
 			method GET
-			path_regexp ^/api/v1/menu/(categories|items(/[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})?)$
+			path_regexp ^/api/v1/menu/(photos/[0-9a-f-]{36}/(menu|detail)/[0-9a-f-]{36}|categories|items(/[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})?)$
 		}
 		handle @menu {
 			uri strip_prefix /api/v1/menu
@@ -130,6 +130,16 @@ import routes.caddy
 	import edge_http
 	route {
 		import clean_request
+		@upload expression `({method} == 'POST' && {path} == '/api/v1/menu/admin/items/upload') || ({method} == 'PUT' && path_regexp('^/api/v1/menu/admin/items/[0-9a-f-]{36}/upload$'))`
+		handle @upload {
+			request_body {
+				max_size 11MiB
+			}
+			uri strip_prefix /api/v1/menu
+			reverse_proxy menu-service:8000 {
+				import clean_upstream
+			}
+		}
 		request_body {
 			max_size 128KB
 		}
@@ -157,7 +167,7 @@ import routes.caddy
 		}
 
 		handle_path /api/v1/menu/* {
-			@menu path /categories /categories/* /items /items/* /admin/items
+			@menu path /categories /categories/* /items /items/* /admin/items /photos/*
 			route {
 				reverse_proxy @menu menu-service:8000 {
 					import clean_upstream
@@ -167,7 +177,7 @@ import routes.caddy
 		}
 
 		handle_path /api/v1/orders/* {
-			@orders path / /slots /slots/* /wallet/credits
+			@orders path / /slots /slots/* /wallet/credits /inventory/*
 			@detail path_regexp ^/[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}(/(status|cancel))?$
 			route {
 				reverse_proxy @orders order-service:8000 {

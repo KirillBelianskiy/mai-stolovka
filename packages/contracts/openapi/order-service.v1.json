@@ -398,6 +398,29 @@
         "title": "StatusChange",
         "type": "object"
       },
+      "StockCount": {
+        "additionalProperties": false,
+        "properties": {
+          "remaining_quantity": {
+            "anyOf": [
+              {
+                "maximum": 2147483647.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remaining Quantity"
+          }
+        },
+        "required": [
+          "remaining_quantity"
+        ],
+        "title": "StockCount",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -696,6 +719,64 @@
         "summary": "Ready",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/inventory/{item_id}": {
+      "put": {
+        "operationId": "set_stock_inventory__item_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockCount"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockCount"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Stock",
+        "tags": [
+          "dish stock"
         ]
       }
     },

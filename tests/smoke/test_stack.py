@@ -77,7 +77,10 @@ class StackSmokeTests(unittest.TestCase):
             )
 
     def test_frontends_and_all_health_routes(self) -> None:
-        for base, title in ((self.mini, "Обед в МАИ"), (self.kitchen, "Рабочее место столовой")):
+        for base, title in (
+            (self.mini, "<title>МАИ.Еда</title>"),
+            (self.kitchen, "Рабочее место столовой"),
+        ):
             with self.subTest(origin=base):
                 with urlopen(f"{base}/", timeout=10) as response:
                     self.assertIn(title, response.read().decode())
@@ -199,6 +202,7 @@ class StackSmokeTests(unittest.TestCase):
                 "dispatch_bot",
             },
             "orders": {
+                "dish_stock",
                 "time_slots",
                 "orders",
                 "order_items",
