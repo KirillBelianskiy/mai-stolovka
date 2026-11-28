@@ -750,3 +750,20 @@ textarea:focus-visible {
 .cancel-dialog p { color: #526279; line-height: 1.6; }
 .cancel-dialog > div { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
 .cancel-dialog button { flex: 1; }
+
+.admin-photo-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  gap: 12px;
+}
+.admin-photo-fields p {
+  grid-column: 1 / -1;
+  font-size: .875rem;
+}
+.admin-photo-fields input { min-width: 0; }
+.admin-photo-preview {
+  width: 72px;
+  height: 58px;
+  border-radius: 8px;
+  object-fit: cover;
+}

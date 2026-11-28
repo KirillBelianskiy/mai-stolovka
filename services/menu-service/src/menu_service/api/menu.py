@@ -1,10 +1,22 @@
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql.elements import ColumnElement
+from starlette.concurrency import run_in_threadpool
 
 from menu_service.api.dependencies import Claims, Session
 from menu_service.api.schemas import (
@@ -13,11 +25,14 @@ from menu_service.api.schemas import (
     ItemPage,
     ItemRead,
     ItemWrite,
+    SnapshotItem,
     SnapshotRequest,
     SnapshotResponse,
 )
+from menu_service.application.photos import MAX_PHOTO_BYTES, InvalidPhoto, PhotoKind, prepare_photo
 from menu_service.infrastructure.database import Database
 from menu_service.infrastructure.models import Category, MenuItem
+from menu_service.infrastructure.stock import StockClient
 from menu_service.infrastructure.tokens import AccessClaims
 
 router = APIRouter(tags=["menu"])
@@ -41,8 +56,22 @@ async def commit_change(db: Session) -> None:
 
 
 @router.get("/categories", response_model=list[CategoryRead])
-async def categories(db: Session) -> list[Category]:
-    return list(await db.scalars(select(Category).order_by(Category.sort_order, Category.id)))
+async def categories(db: Session) -> list[CategoryRead]:
+    counts = (
+        select(MenuItem.category_id, func.count().label("published_count"))
+        .where(MenuItem.is_available.is_(True))
+        .group_by(MenuItem.category_id)
+        .subquery()
+    )
+    rows = await db.execute(
+        select(Category, func.coalesce(counts.c.published_count, 0))
+        .outerjoin(counts, counts.c.category_id == Category.id)
+        .order_by(Category.sort_order, Category.id)
+    )
+    return [
+        CategoryRead.model_validate(category).model_copy(update={"published_item_count": count})
+        for category, count in rows
+    ]
 
 
 @router.post("/categories", response_model=CategoryRead, status_code=201)
@@ -75,8 +104,18 @@ async def delete_category(category_id: UUID, admin: Admin, db: Session) -> Respo
     return Response(status_code=204)
 
 
+async def read_items(rows: list[MenuItem], request: Request) -> list[ItemRead]:
+    stock: StockClient = request.app.state.stock
+    counts = await stock.remaining([row.id for row in rows])
+    return [
+        ItemRead.model_validate(row).model_copy(update={"remaining_quantity": counts.get(row.id)})
+        for row in rows
+    ]
+
+
 @router.get("/items", response_model=ItemPage)
 async def items(
+    request: Request,
     db: Session,
     category_id: UUID | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
@@ -94,7 +133,7 @@ async def items(
         .offset(offset)
     )
     return ItemPage(
-        items=[ItemRead.model_validate(row) for row in rows],
+        items=await read_items(list(rows), request),
         total=total or 0,
         limit=limit,
         offset=offset,
@@ -103,6 +142,7 @@ async def items(
 
 @router.get("/admin/items", response_model=ItemPage)
 async def admin_items(
+    request: Request,
     admin: Admin,
     db: Session,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
@@ -113,7 +153,7 @@ async def admin_items(
         select(MenuItem).order_by(MenuItem.name, MenuItem.id).limit(limit).offset(offset)
     )
     return ItemPage(
-        items=[ItemRead.model_validate(row) for row in rows],
+        items=await read_items(list(rows), request),
         total=total or 0,
         limit=limit,
         offset=offset,
@@ -121,11 +161,11 @@ async def admin_items(
 
 
 @router.get("/items/{item_id}", response_model=ItemRead)
-async def item(item_id: UUID, db: Session) -> MenuItem:
+async def item(item_id: UUID, db: Session, request: Request) -> ItemRead:
     current = await db.get(MenuItem, item_id)
     if current is None or not current.is_available:
         raise HTTPException(404, "Menu item not found")
-    return current
+    return (await read_items([current], request))[0]
 
 
 @router.post("/items", response_model=ItemRead, status_code=201)
@@ -157,6 +197,95 @@ async def delete_item(item_id: UUID, admin: Admin, db: Session) -> Response:
     return Response(status_code=204)
 
 
+async def read_photo(upload: UploadFile, kind: PhotoKind) -> bytes:
+    contents = await upload.read(MAX_PHOTO_BYTES + 1)
+    if len(contents) > MAX_PHOTO_BYTES:
+        raise HTTPException(413, "Размер одного фото должен быть не больше 5 МБ.")
+    try:
+        return await run_in_threadpool(prepare_photo, contents, kind)
+    except InvalidPhoto as error:
+        raise HTTPException(422, str(error)) from error
+
+
+async def save_item_with_photos(
+    db: Session,
+    item_id: UUID | None,
+    item_json: str,
+    menu_photo: UploadFile | None,
+    detail_photo: UploadFile | None,
+) -> MenuItem:
+    try:
+        body = ItemWrite.model_validate_json(item_json)
+    except ValidationError as error:
+        raise HTTPException(422, "Проверьте название, категорию и цену блюда.") from error
+
+    # Decode both files before taking the row lock. A failed photo leaves the dish untouched.
+    menu = await read_photo(menu_photo, "menu") if menu_photo else None
+    detail = await read_photo(detail_photo, "detail") if detail_photo else None
+    values = body.model_dump(exclude_unset=True)
+    current: MenuItem | None
+    if item_id is None:
+        current = MenuItem(**values)
+        db.add(current)
+    else:
+        current = await db.get(MenuItem, item_id, with_for_update=True)
+        if current is None:
+            raise HTTPException(404, "Menu item not found")
+        for key, value in values.items():
+            setattr(current, key, value)
+
+    if menu is not None:
+        current.menu_photo, current.menu_photo_version = menu, uuid4()
+    if detail is not None:
+        current.detail_photo, current.detail_photo_version = detail, uuid4()
+    await commit_change(db)
+    return current
+
+
+@router.post("/admin/items/upload", response_model=ItemRead, status_code=201)
+async def create_item_with_photos(
+    admin: Admin,
+    db: Session,
+    item_json: Annotated[str, Form(max_length=20000)],
+    menu_photo: Annotated[UploadFile, File()],
+    detail_photo: Annotated[UploadFile, File()],
+) -> MenuItem:
+    return await save_item_with_photos(db, None, item_json, menu_photo, detail_photo)
+
+
+@router.put("/admin/items/{item_id}/upload", response_model=ItemRead)
+async def update_item_with_photos(
+    item_id: UUID,
+    admin: Admin,
+    db: Session,
+    item_json: Annotated[str, Form(max_length=20000)],
+    menu_photo: Annotated[UploadFile | None, File()] = None,
+    detail_photo: Annotated[UploadFile | None, File()] = None,
+) -> MenuItem:
+    return await save_item_with_photos(db, item_id, item_json, menu_photo, detail_photo)
+
+
+@router.get(
+    "/photos/{item_id}/{kind}/{version}",
+    response_class=Response,
+    responses={200: {"content": {"image/webp": {}}}},
+)
+async def item_photo(item_id: UUID, kind: PhotoKind, version: UUID, db: Session) -> Response:
+    data, revision = (
+        (MenuItem.menu_photo, MenuItem.menu_photo_version)
+        if kind == "menu"
+        else (MenuItem.detail_photo, MenuItem.detail_photo_version)
+    )
+    photo = await db.scalar(select(data).where(MenuItem.id == item_id, revision == version))
+    if photo is None:
+        raise HTTPException(404, "Photo not found")
+    return Response(
+        content=photo,
+        media_type="image/webp",
+        headers={"Cache-Control": "public, max-age=3600", "X-Content-Type-Options": "nosniff"},
+    )
+
+
 @router.post("/item-snapshots", response_model=SnapshotResponse)
 async def snapshot(body: SnapshotRequest, request: Request) -> SnapshotResponse:
     database: Database | None = request.app.state.database
@@ -174,4 +303,4 @@ async def snapshot(body: SnapshotRequest, request: Request) -> SnapshotResponse:
             raise HTTPException(
                 409, {"code": "ITEM_UNAVAILABLE", "message": "One or more dishes are unavailable"}
             )
-        return SnapshotResponse(items=[ItemRead.model_validate(row) for row in rows])
+        return SnapshotResponse(items=[SnapshotItem.model_validate(row) for row in rows])

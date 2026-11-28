@@ -177,8 +177,6 @@ strong { font-weight: 700; }
 .menu-feed { padding-bottom: calc(var(--safe-bottom) + 18px); overflow-anchor: none; }
 .menu-feed.has-dock { padding-bottom: calc(var(--safe-bottom) + 88px); }
 .menu-cover {
-  --cover-progress: 0;
-  --cover-shift: 0px;
   height: clamp(330px, 63.3dvh, 575px);
   min-height: calc(var(--safe-top) + 255px);
   position: relative;
@@ -196,8 +194,6 @@ strong { font-weight: 700; }
   background-color: var(--cover);
   background-size: cover;
   background-position: center 35%;
-  transform: translateY(var(--cover-shift)) scale(calc(1 - var(--cover-progress) * .12));
-  opacity: calc(1 - var(--cover-progress) * .45);
   transform-origin: 50% 10%;
 }
 .cover-art::after {
@@ -229,13 +225,6 @@ strong { font-weight: 700; }
 }
 .cover-promo-controls span { width: 20px; height: 4px; border-radius: 9px; background: #7589a9; }
 .cover-promo-controls span[data-current="true"] { background: var(--focus); width: 25px; }
-.cover-promo-toggle {
-  position: absolute;
-  right: var(--right);
-  bottom: 0;
-}
-.cover-promo-toggle:focus-visible { outline-offset: -2px; }
-.cover-promo-toggle svg { width: 16px; height: 16px; }
 .menu-header {
   position: relative;
   pointer-events: none;
@@ -257,8 +246,6 @@ strong { font-weight: 700; }
   width: 100%;
   text-align: center;
   padding: 16px var(--right) clamp(24px, 4.8dvh, 42px) var(--left);
-  opacity: calc(1 - var(--cover-progress) * .46);
-  transform: scale(calc(1 - var(--cover-progress) * .08));
 }
 .cover-caption strong { font-size: 1.6875rem; line-height: 1.15; }
 .category-rail {
@@ -270,11 +257,8 @@ strong { font-weight: 700; }
   overscroll-behavior-inline: contain;
   scrollbar-width: none;
   background: var(--canvas);
-  position: sticky;
-  top: var(--safe-top);
-  z-index: 2;
+  position: relative;
 }
-.category-rail[data-pinned="true"] { box-shadow: 0 calc(-1px - var(--safe-top)) 0 calc(1px + var(--safe-top)) var(--canvas); }
 .category-rail button {
   white-space: nowrap;
   flex: 0 0 auto;
@@ -314,6 +298,9 @@ strong { font-weight: 700; }
   scroll-padding-inline: var(--left) var(--right);
 }
 .featured-shelf { grid-auto-columns: calc((100% - 20px) / 3); gap: 10px; }
+.category-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; padding: 5px var(--right) 6px var(--left); }
+.food-card[data-sold-out="true"] .dish-photo { opacity: .45; }
+.menu-page-marker { min-height: 1px; margin-inline: var(--left); }
 .food-card { min-width: 0; position: relative; border-radius: 16px; }
 .featured-shelf .food-card { background: var(--card); }
 .food-card-body {
@@ -344,7 +331,7 @@ strong { font-weight: 700; }
 }
 .dish-photo { display: block; overflow: hidden; min-width: 0; width: 100%; }
 .dish-photo img { width: 100%; height: 100%; display: block; object-fit: cover; }
-.featured-shelf .dish-photo img, .checkout-thumbs .dish-photo img { object-fit: contain; }
+.food-card .dish-photo img, .checkout-thumbs .dish-photo img { object-fit: contain; }
 .food-card .dish-photo { aspect-ratio: 1.44; border-radius: 12px; margin-bottom: 9px; }
 .featured-shelf .dish-photo { aspect-ratio: 1.14; }
 .food-card-add {
@@ -371,7 +358,6 @@ strong { font-weight: 700; }
 }
 .food-card-add:disabled { opacity: .5; }
 .food-unavailable { font-size: .8125rem; color: var(--muted); padding: 0 8px 8px; }
-.load-more { margin: 12px var(--right) 0 var(--left); }
 .feed-state, .feed-feedback, .feed-content > p { margin: 12px var(--right) 12px var(--left); }
 .feed-state h2 { font-size: 1.5rem; padding: 0; }
 .feed-state p { color: var(--muted); margin-bottom: 10px; }
@@ -542,6 +528,18 @@ strong { font-weight: 700; }
 .order-ticket { min-height: 100%; display: flex; flex-direction: column; }
 .order-ticket > * { flex-shrink: 0; }
 .order-banner { min-height: 337px; padding-bottom: 32px; }
+.order-banner[data-stage="PENDING"] { --stage-photo: url("/design/mai-eda/order-pending.webp"); }
+.order-banner[data-stage="PREPARING"] { --stage-photo: url("/design/mai-eda/order-preparing.webp"); }
+.order-banner[data-stage="READY"] { --stage-photo: url("/design/mai-eda/order-ready.webp"); }
+.order-banner[data-stage="COMPLETED"] { --stage-photo: url("/design/mai-eda/order-completed.webp"); }
+.order-banner:is([data-stage="PENDING"], [data-stage="PREPARING"], [data-stage="READY"], [data-stage="COMPLETED"]) {
+  background-image: linear-gradient(0deg, var(--canvas), transparent 42%), linear-gradient(90deg, #070e20e6, #070e2088 48%, transparent 85%), var(--stage-photo);
+  background-position: center;
+}
+.pickup-slot[data-full="true"] .slot-indicator {
+  flex-basis: 60px; height: 12px; border-radius: 2px; transform: rotate(-9deg);
+  background: repeating-linear-gradient(120deg, #f2c851 0 8px, #1b2027 8px 16px);
+}
 .ticket-heading { padding: 69px var(--right) 35px var(--left); }
 .ticket-heading h1 { font-size: 1.375rem; line-height: 1.17; font-weight: 750; }
 .order-number { font-size: clamp(2rem, 11.5vw, 2.875rem); font-weight: 800; line-height: 1.05; margin-top: 18px; }
@@ -557,7 +555,9 @@ strong { font-weight: 700; }
 .ticket-composition { border-block-start: 1px solid var(--line); margin-top: 24px; padding-top: 8px; }
 .ticket-composition summary { min-height: 44px; cursor: pointer; padding-block: 10px; }
 .ticket-composition summary strong { float: right; margin-left: 10px; }
-.ticket-composition li { display: flex; justify-content: space-between; gap: 12px; padding-block: 6px; }
+.ticket-composition li .dish-photo { width: 36px; height: 36px; }
+.ticket-composition li .dish-photo img { object-fit: contain; }
+.ticket-composition li { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding-block: 6px; }
 .ticket-composition li small { display: block; color: var(--muted); }
 .ticket-composition li strong { font-weight: 500; text-align: right; }
 .payment-evidence { margin-top: 8px; }

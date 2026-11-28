@@ -1,6 +1,6 @@
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, ForeignKey, String, Text
+from sqlalchemy import CheckConstraint, ForeignKey, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from menu_service.infrastructure.database import Base
@@ -25,3 +25,20 @@ class MenuItem(Base):
     price: Mapped[int]
     image_url: Mapped[str | None] = mapped_column(String(2048))
     is_available: Mapped[bool] = mapped_column(default=True)
+
+    menu_photo_version: Mapped[UUID | None]
+    detail_photo_version: Mapped[UUID | None]
+    menu_photo: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+    detail_photo: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+
+    @property
+    def menu_image_url(self) -> str | None:
+        if self.menu_photo_version is None:
+            return None
+        return f"/api/v1/menu/photos/{self.id}/menu/{self.menu_photo_version}"
+
+    @property
+    def detail_image_url(self) -> str | None:
+        if self.detail_photo_version is None:
+            return None
+        return f"/api/v1/menu/photos/{self.id}/detail/{self.detail_photo_version}"

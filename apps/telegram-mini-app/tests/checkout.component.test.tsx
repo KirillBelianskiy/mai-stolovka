@@ -435,6 +435,8 @@ test("order stages illuminate one segment at a time and cancellation stays separ
   const ticket = await screen.findByRole("article", { name: "Талон заказа" });
   const stageList = await within(ticket).findByRole("list", { name: "Этапы заказа" });
   const countSegments = () => stageList.querySelectorAll("[data-complete='true']").length;
+  const banner = ticket.querySelector(".order-banner");
+  expect(banner?.getAttribute("data-stage")).toBe("PENDING");
   expect(countSegments()).toBe(1);
   for (const [status, heading, count] of [
     ["PREPARING", "Готовится", 2],
@@ -445,6 +447,7 @@ test("order stages illuminate one segment at a time and cancellation stays separ
     orders[id] = { ...orders[id], status };
     await userEvent.click(within(ticket).getByRole("button", { name: "Обновить" }));
     await within(ticket).findByRole("heading", { name: heading });
+    expect(banner?.getAttribute("data-stage")).toBe(status);
     expect(countSegments()).toBe(count);
     expect(stageList.children[count - 1].getAttribute("aria-current")).toBe("step");
   }

@@ -5,7 +5,7 @@ import { Ellipsis, Minus, Plus, X } from "lucide-react";
 import { useState } from "react";
 import { BottomAction, Sheet } from "@/components/customer-ui";
 import { DishPhoto } from "@/components/dish-photo";
-import { loadItem, MAX_INTEGER, money, type MenuItem } from "@/lib/menu";
+import { availablePortions, loadItem, MAX_INTEGER, money, type MenuItem } from "@/lib/menu";
 
 export function DishDetails({ item, onBack, onAdd, onCart, inCart, feedback }: {
   item: MenuItem;
@@ -27,13 +27,13 @@ export function DishDetails({ item, onBack, onAdd, onCart, inCart, feedback }: {
   const current = detail.data ?? item;
   const description = detail.data?.description?.trim();
   const descriptionIsLong = Boolean(description && description.length > 100);
-  const maxCount = Math.min(MAX_INTEGER - inCart, current.price ? Math.floor(Number.MAX_SAFE_INTEGER / current.price) : MAX_INTEGER);
+  const maxCount = Math.min(availablePortions(current) - inCart, current.price ? Math.floor(Number.MAX_SAFE_INTEGER / current.price) : MAX_INTEGER);
   const amount = money(current.price * count);
-  const unavailable = detail.isError || !current.is_available;
+  const unavailable = detail.isError || availablePortions(current) === 0;
   return (
     <section className="scene dish-scene" aria-labelledby="dish-heading">
       <div className="dish-artwork" aria-hidden="true">
-        <DishPhoto item={current} eager />
+        <DishPhoto item={current} detail eager />
       </div>
       <header className="dish-header">
         <button className="round-button" aria-label="Закрыть блюдо" onClick={onBack}><X aria-hidden="true" /></button>
@@ -53,11 +53,11 @@ export function DishDetails({ item, onBack, onAdd, onCart, inCart, feedback }: {
             {detail.isPending && <p role="status">Загружаем блюдо…</p>}
             {unavailable && (
               <p role="status">
-                {detail.isError ? "Не удалось проверить блюдо." : "Сейчас блюдо недоступно."}{" "}
+                {detail.isError ? "Не удалось проверить блюдо." : current.remaining_quantity === 0 ? "Блюдо закончилось." : "Сейчас блюдо недоступно."}{" "}
                 {detail.isError && <button className="text-button" onClick={() => void detail.refetch()}>Повторить</button>}
               </p>
             )}
-            {count > maxCount && <p>Уменьшите количество порций.</p>}
+            {!unavailable && count > maxCount && <p>Уменьшите количество порций.</p>}
             {feedback && <p role="status">{feedback}</p>}
             {inCart > 0 && <button className="text-button" onClick={onCart}>{added ? "В корзине" : "Корзина"} · {inCart}</button>}
           </div>

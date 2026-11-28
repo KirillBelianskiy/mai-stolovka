@@ -13,7 +13,7 @@ import { ProfilePanel } from "@/components/profile-panel";
 import { useTelegramChrome } from "@/components/telegram-chrome";
 import { JOURNAL_KEY, type CheckoutIntent } from "@/lib/checkout";
 import {
-  CART_KEY, MAX_INTEGER, cartTotal, decodeCart, loadItem, money, saveCart,
+  CART_KEY, availablePortions, cartTotal, decodeCart, loadItem, money, saveCart,
   setQuantity, type CartLine, type MenuItem,
 } from "@/lib/menu";
 
@@ -192,6 +192,8 @@ function Customer({ accountId }: { accountId: string }) {
   function change(id: string, delta: number) {
     try {
       const existing = basket.current.find((line) => line.id === id)?.quantity ?? 0;
+      const item = client.getQueryData<MenuItem>(["menu-item", id]);
+      if (delta > 0 && (!item || existing + delta > availablePortions(item))) return;
       updateCart(setQuantity(basket.current, id, Math.max(0, existing + delta)));
     } catch {
       setCartFeedback("Не удалось изменить количество. Уберите лишние позиции.");
@@ -201,6 +203,7 @@ function Customer({ accountId }: { accountId: string }) {
     if (!hydrated || !item.is_available) return false;
     try {
       const amount = (basket.current.find((line) => line.id === item.id)?.quantity ?? 0) + count;
+      if (amount > availablePortions(item)) return false;
       const next = setQuantity(basket.current, item.id, amount);
       // A catalog card can seed the basket, but must not overwrite a newer detail response.
       client.setQueryData<MenuItem>(["menu-item", item.id], (cached) => cached ?? item);
@@ -281,6 +284,7 @@ function Customer({ accountId }: { accountId: string }) {
                               {item && <p>{money(item.price)}{line.quantity > 1 ? " за порцию" : ""}</p>}
                               {item && line.quantity > 1 && !unavailable && Number.isSafeInteger(item.price * line.quantity)
                                 && <strong>{money(item.price * line.quantity)}</strong>}
+                              {item?.remaining_quantity != null && line.quantity > item.remaining_quantity && <p className="error-text">Осталось порций: {item.remaining_quantity}</p>}
                               {(query.isError || item?.is_available === false) && (
                                 <p className="error-text">
                                   Недоступно <button className="text-button" onClick={() => void query.refetch()}>Проверить</button>
@@ -293,7 +297,7 @@ function Customer({ accountId }: { accountId: string }) {
                               </button>
                               <span aria-live="polite">{line.quantity}</span>
                               <button aria-label={"Увеличить количество: " + name}
-                                onClick={() => change(line.id, 1)} disabled={unavailable || line.quantity >= MAX_INTEGER}>
+                                onClick={() => change(line.id, 1)} disabled={unavailable || !item || line.quantity >= availablePortions(item)}>
                                 <Plus size={16} aria-hidden="true" />
                               </button>
                             </div>

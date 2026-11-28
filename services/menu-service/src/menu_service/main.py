@@ -10,6 +10,7 @@ from menu_service.api.health import router
 from menu_service.api.menu import router as business_router
 from menu_service.config import Settings
 from menu_service.infrastructure.database import Database
+from menu_service.infrastructure.stock import StockClient
 from menu_service.infrastructure.tokens import TokenVerifier
 
 
@@ -23,10 +24,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        stock = StockClient(settings.order_base_url)
+        app.state.stock = stock
         app.state.database = database
         try:
             yield
         finally:
+            await stock.close()
             if database is not None:
                 await database.close()
 

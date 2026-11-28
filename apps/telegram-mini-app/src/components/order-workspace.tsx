@@ -20,7 +20,7 @@ import {
   removeIntent,
   type CheckoutIntent,
 } from "@/lib/checkout";
-import { money, type CartLine, type MenuItem } from "@/lib/menu";
+import { loadItem, money, type CartLine, type MenuItem } from "@/lib/menu";
 import {
   canCancel,
   cancelOrder,
@@ -55,6 +55,7 @@ const knownRejections = new Set([
   "SLOT_NOT_FOUND",
   "TOTAL_TOO_LARGE",
   "INSUFFICIENT_FUNDS",
+  "INSUFFICIENT_STOCK",
   "MENU_ITEM_NOT_FOUND",
   "MENU_ITEM_UNAVAILABLE",
   "DISH_UNAVAILABLE",
@@ -177,6 +178,8 @@ function CheckoutSession({
       );
       if (!mounted.current) return;
 
+      void client.invalidateQueries({ queryKey: ["menu-items"] });
+      void client.invalidateQueries({ queryKey: ["menu-item"] });
       void client.invalidateQueries({ queryKey: ["own-orders", accountId] });
       try {
         removeIntent(sessionStorage, saved.key);
@@ -207,6 +210,10 @@ function CheckoutSession({
         error instanceof OrderApiError &&
         error.code &&
         knownRejections.has(error.code);
+      if (rejection && error.code === "INSUFFICIENT_STOCK") {
+        void client.invalidateQueries({ queryKey: ["menu-item"] });
+        void client.invalidateQueries({ queryKey: ["menu-items"] });
+      }
       if (rejection) {
         try {
           removeIntent(sessionStorage, saved.key);
@@ -394,7 +401,7 @@ function CheckoutSession({
                     const interval = pickupTime(slot.start_time, slot.end_time);
                     const availability = expired ? "Приём заказов завершён" : full ? "Мест нет" : picked ? "Выбрано" : "Есть места";
                     return (
-                      <button key={slot.id} type="button" className="pickup-slot" aria-pressed={picked} aria-label={interval + " · " + availability}
+                      <button key={slot.id} type="button" className="pickup-slot" data-full={full && !expired} aria-pressed={picked} aria-label={interval + " · " + availability}
                         disabled={busy || auth.busy || expired || full}
                         onClick={() => {
                           setSlotId(slot.id);
@@ -643,6 +650,7 @@ function OrderTicket({ accountId, id, accepted, onMenu, onBack }: OrderViewProps
   const auth = useAuth(), client = useQueryClient();
   const [busy, setBusy] = useState(false),
     [failure, setFailure] = useState("");
+  const [compositionOpen, setCompositionOpen] = useState(false);
   const [confirmCancellation, setConfirmCancellation] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const lock = useRef(false), mounted = useRef(true);
@@ -703,7 +711,7 @@ function OrderTicket({ accountId, id, accepted, onMenu, onBack }: OrderViewProps
 
   return (
     <article className="order-ticket" aria-label="Талон заказа">
-      <div className="photo-banner plane-art order-banner">
+      <div className="photo-banner plane-art order-banner" data-stage={order?.status}>
         {onBack && <ScreenHeader onBack={onBack} />}
         <div className="ticket-heading" aria-live="polite">
           <h1 className={order ? "status-" + order.status.toLowerCase() : undefined}>{title}</h1>
@@ -737,7 +745,7 @@ function OrderTicket({ accountId, id, accepted, onMenu, onBack }: OrderViewProps
               <strong>{pickupTime(order.slot_start_time, order.slot_end_time)}</strong> <span>МСК</span>
             </p>
             <p>{moscowDate(order.slot_start_time)} · {CAMPUS}</p>
-            <details className="ticket-composition">
+            <details className="ticket-composition" onToggle={(event) => setCompositionOpen(event.currentTarget.open)}>
               <summary>
                 <span>Состав · {positionCount(order.items.length)}</span>
                 <strong>{money(order.total_amount)}</strong>
@@ -745,6 +753,7 @@ function OrderTicket({ accountId, id, accepted, onMenu, onBack }: OrderViewProps
               <ul>
                 {order.items.map((item) => (
                   <li key={item.id}>
+                    <ReceiptPhoto id={item.menu_item_id} visible={compositionOpen} />
                     <span>{item.name_at_moment}{item.quantity > 1 && <small>{item.quantity} × {money(item.price_at_moment)}</small>}</span>
                     <strong>{money(item.price_at_moment * item.quantity)}</strong>
                   </li>
@@ -770,4 +779,15 @@ function OrderTicket({ accountId, id, accepted, onMenu, onBack }: OrderViewProps
       <BottomAction><button className="primary-button" onClick={onMenu}>Вернуться в меню</button></BottomAction>
     </article>
   );
+}
+
+function ReceiptPhoto({ id, visible }: { id: string; visible: boolean }) {
+  const item = useQuery({
+    queryKey: ["menu-item", id],
+    queryFn: ({ signal }) => loadItem(id, signal),
+    enabled: visible,
+    staleTime: 30000,
+    retry: false,
+  });
+  return <DishPhoto item={item.data ?? { image_url: null }} />;
 }

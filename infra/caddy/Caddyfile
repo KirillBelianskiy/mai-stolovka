@@ -5,10 +5,18 @@
 import routes.caddy
 
 (local_api) {
+	@upload expression `({method} == 'POST' && {path} == '/api/v1/menu/admin/items/upload') || ({method} == 'PUT' && path_regexp('^/api/v1/menu/admin/items/[0-9a-f-]{36}/upload$'))`
+	handle @upload {
+		request_body {
+			max_size 11MiB
+		}
+		uri strip_prefix /api/v1/menu
+		reverse_proxy menu-service:8000
+	}
 	request_body {
 		max_size 1048576
 	}
-	@private path /api/v1/users/internal/v1/notification-recipients /api/v1/users/internal/v1/notification-recipients/*
+	@private path /api/v1/users/internal/v1/notification-recipients /api/v1/users/internal/v1/notification-recipients/* /api/v1/orders/internal /api/v1/orders/internal/*
 	respond @private 404
 	@staff_login {
 		method POST

@@ -1,13 +1,13 @@
 "use client";
 
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { ArrowDown, Plus, Send, UserRound } from "lucide-react";
-import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type TouchEvent } from "react";
+import { Plus, Send, UserRound } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type TouchEvent } from "react";
 import { PromoCover } from "@/components/promo-cover";
 import { CAMPUS } from "@/components/customer-ui";
 import { DishPhoto } from "@/components/dish-photo";
 import {
-  MAX_INTEGER, loadCategories, loadItems, money, type CartLine, type MenuItem,
+  availablePortions, loadCategories, loadItems, money, type CartLine, type MenuItem,
 } from "@/lib/menu";
 
 type Position = {
@@ -42,6 +42,7 @@ type Props = {
 export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, feedback, dock }: Props) {
   const [category, setCategory] = useState<string | null>(null);
   const feed = useRef<HTMLElement>(null);
+  const sentinel = useRef<HTMLDivElement>(null);
   const hero = useRef<HTMLDivElement>(null);
   const rail = useRef<HTMLElement>(null);
   const profile = useRef<HTMLButtonElement>(null);
@@ -51,7 +52,7 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
   const gesture = useRef<Swipe | null>(null);
   const categories = useQuery({
     queryKey: ["menu-categories"],
-    queryFn: ({ signal }) => loadCategories(signal), retry: 1,
+    queryFn: ({ signal }) => loadCategories(signal), retry: 1, refetchInterval: active ? 30000 : false,
   });
   const menu = useInfiniteQuery({
     queryKey: ["menu-items", category],
@@ -63,12 +64,13 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
         : undefined,
     gcTime: Infinity,
     staleTime: 30000,
+    refetchInterval: active ? 30000 : false,
     retry: 1,
   });
   const items = [
     ...new Map(menu.data?.pages.flatMap((page) => page.items).map((item) => [item.id, item])).values(),
   ];
-  const options = [{ id: null, name: "На обед" }, ...(categories.data ?? [])];
+  const options = [{ id: null, name: "На обед" }, ...(categories.data ?? []).filter((entry) => entry.published_item_count !== 0)];
   const featured = items.filter((item) => item.is_available).slice(0, 3);
   const sections = (categories.data ?? []).flatMap(({ id, name }) => {
     const matching = items.filter((item) => item.category_id === id);
@@ -76,34 +78,25 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
   });
   const unsorted = items.filter((item) => !categories.data?.some(({ id }) => id === item.category_id));
   if (unsorted.length) sections.push({ id: "catalog", name: "Меню", items: unsorted });
-  const filterTitle = options.find(({ id }) => id === category)?.name ?? "Меню";
+  const filterTitle = categories.data?.find(({ id }) => id === category)?.name ?? "Меню";
 
-  const measure = useCallback(() => {
-    if (!feed.current || !hero.current || !rail.current) return;
-    const scroll = Math.max(0, feed.current.scrollTop);
-    const inset = Number.parseFloat(getComputedStyle(rail.current).top) || 0;
-    const travel = Math.max(1, hero.current.offsetHeight - inset);
-    const t = clamp(scroll / travel, 0, 1);
-    // Smoothstep softens both ends. Scroll position remains the source of truth on reversal.
-    const eased = t * t * (3 - 2 * t);
-    hero.current.style.setProperty("--cover-progress", String(eased));
-    hero.current.style.setProperty("--cover-shift", (t * travel * .1) + "px");
-    rail.current.dataset.pinned = String(scroll >= travel - 1);
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!active || !hero.current || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(hero.current);
+  const { hasNextPage, isFetching, isFetchNextPageError, fetchNextPage } = menu;
+  useEffect(() => {
+    if (!active || !hasNextPage || isFetching || isFetchNextPageError || !sentinel.current ||
+      !feed.current || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) void fetchNextPage({ cancelRefetch: false });
+    }, { root: feed.current, rootMargin: "160px 0px" });
+    observer.observe(sentinel.current);
     return () => observer.disconnect();
-  }, [active, measure]);
+  }, [active, hasNextPage, isFetching, isFetchNextPageError, fetchNextPage, category]);
 
   function recordPosition(): Position | null {
     const viewport = feed.current;
     if (!viewport) return null;
     const left = viewport.getBoundingClientRect().left;
     const right = viewport.getBoundingClientRect().right;
-    const top = rail.current?.getBoundingClientRect().bottom ?? 0;
+    const top = viewport.getBoundingClientRect().top;
     const candidates = [...viewport.querySelectorAll<HTMLElement>("[data-feed-card]")];
     const anchor = candidates.find((card) => {
       const rect = card.getBoundingClientRect();
@@ -153,7 +146,6 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
         if (saved !== undefined) shelf.scrollLeft = saved;
       }
       viewport.scrollTop = position.top;
-      // The cover scrolls behind a sticky rail. Only use a card anchor in the feed.
       if (position.anchor && position.top > (hero.current?.offsetHeight ?? 0) / 2) {
         const anchor = [...viewport.querySelectorAll<HTMLElement>("[data-feed-card]")]
           .find((card) => card.dataset.feedCard === position.anchor);
@@ -179,8 +171,7 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
         if (button.left < bounds.left) strip.scrollLeft += button.left - bounds.left - 16;
       }
     }
-    measure();
-  }, [active, category, measure, menu.isPending, menu.data]);
+  }, [active, category, menu.isPending, menu.data]);
 
   function startSwipe(event: TouchEvent) {
     const target = event.target;
@@ -188,7 +179,7 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
     const edge = feed.current?.getBoundingClientRect();
     gesture.current = event.touches.length === 1 && edge && touch.clientX > edge.left + 16 &&
       touch.clientX < edge.right - 16 && target instanceof Element &&
-      !target.closest("[data-scroll-key], [data-promo-carousel], button, a, input")
+      !target.closest("[data-scroll-key], [data-promo-carousel], button:not(.food-card-body), a, input")
       ? { x: touch.clientX, y: touch.clientY, time: event.timeStamp, axis: null }
       : null;
   }
@@ -229,12 +220,12 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
   }
 
   const shelf = (id: string, list: MenuItem[], compact = false) => (
-    <div className={compact ? "food-shelf featured-shelf" : "food-shelf catalog-shelf"} data-scroll-key={id}>
+    <div className={compact ? "food-shelf featured-shelf" : category ? "category-grid" : "food-shelf catalog-shelf"} data-scroll-key={category ? undefined : id}>
       {list.map((item) => {
         const count = cart.find((line) => line.id === item.id)?.quantity ?? 0;
         const key = id + "/" + item.id;
         return (
-          <article className="food-card" key={item.id}>
+          <article className="food-card" data-sold-out={availablePortions(item) === 0} key={item.id}>
             <button className="food-card-body" data-feed-card={key}
               aria-label={"Подробнее: " + item.name + ", " + money(item.price)}
               onClick={() => visit(key, () => openDish(item))}>
@@ -244,12 +235,12 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
             </button>
             <button className="food-card-add"
               aria-label={"Добавить " + item.name + " в корзину" + (count ? ", в корзине " + count : "")}
-              disabled={!item.is_available || !canAdd || count >= MAX_INTEGER}
+              disabled={!canAdd || count >= availablePortions(item)}
               onClick={() => add(item)}
             >
               <span>{count || <Plus size={16} aria-hidden="true" />}</span>
             </button>
-            {!item.is_available && <p className="food-unavailable">Недоступно</p>}
+            {availablePortions(item) === 0 && <p className="food-unavailable">Закончилось</p>}
           </article>
         );
       })}
@@ -259,7 +250,7 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
   return (
     <div className="menu-view" hidden={!active}>
       <section ref={feed} className={"menu-feed" + (dock ? " has-dock" : "")} aria-label="Меню столовой"
-        onScroll={measure} onTouchStart={startSwipe} onTouchMove={trackSwipe} onTouchEnd={finishSwipe}
+        onTouchStart={startSwipe} onTouchMove={trackSwipe} onTouchEnd={finishSwipe}
         onTouchCancel={() => { gesture.current = null; }}>
         <div ref={hero} className="menu-cover">
           <PromoCover active={active} />
@@ -301,10 +292,7 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
             </div>
           ) : items.length === 0 ? (
             <div className="feed-state">
-              <div className="state-art plane-art" />
-              <h2>Здесь пока нет блюд</h2>
-              <p>{category ? "Посмотрите другие категории." : "Загляните позже."}</p>
-              {category && <button className="text-button" onClick={() => switchCategory(null)}>На обед</button>}
+              <p>{category ? "Сейчас блюд этой категории нет." : "Сейчас в меню нет блюд."}</p>
             </div>
           ) : category === null ? (
             <>
@@ -319,15 +307,12 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
           ) : shelf(category, items)}
           {menu.isError && items.length > 0 && (
             <p role="alert">Не удалось обновить меню.{" "}
-              <button className="text-button" onClick={() => void menu.refetch()}>Повторить</button>
+              <button className="text-button" onClick={() => void (menu.isFetchNextPageError ? menu.fetchNextPage() : menu.refetch())}>Повторить</button>
             </p>
           )}
-          {menu.hasNextPage && (
-            <button className="text-button load-more" disabled={menu.isFetching}
-              onClick={() => void menu.fetchNextPage()}>
-              {menu.isFetchingNextPage ? "Загружаем…" : "Ещё блюда"}<ArrowDown size={16} aria-hidden="true" />
-            </button>
-          )}
+          {menu.hasNextPage && <div ref={sentinel} className="menu-page-marker" role="status">
+            {menu.isFetchingNextPage && "Загружаем блюда…"}
+          </div>}
         </div>
       </section>
       {dock}

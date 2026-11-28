@@ -199,6 +199,7 @@ class StackSmokeTests(unittest.TestCase):
                 "dispatch_bot",
             },
             "orders": {
+                "dish_stock",
                 "time_slots",
                 "orders",
                 "order_items",
