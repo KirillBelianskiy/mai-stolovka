@@ -2,8 +2,9 @@
 
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { ArrowDown, Plus, Send, UserRound } from "lucide-react";
-import { useLayoutEffect, useRef, useState, type ReactNode, type TouchEvent } from "react";
-import { ART, CAMPUS } from "@/components/customer-ui";
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type TouchEvent } from "react";
+import { PromoCover } from "@/components/promo-cover";
+import { CAMPUS } from "@/components/customer-ui";
 import { DishPhoto } from "@/components/dish-photo";
 import {
   MAX_INTEGER, loadCategories, loadItems, money, type CartLine, type MenuItem,
@@ -15,6 +16,17 @@ type Position = {
   offset: number;
   shelves: Record<string, number>;
 };
+
+type Swipe = {
+  x: number;
+  y: number;
+  time: number;
+  axis: "horizontal" | "vertical" | null;
+};
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(value, max));
+}
 
 type Props = {
   active: boolean;
@@ -36,7 +48,7 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
   const positions = useRef(new Map<string | null, Position>());
   const pendingPosition = useRef<Position | null>(null);
   const returnFocus = useRef<string | "profile" | null>(null);
-  const gesture = useRef<{ x: number; y: number } | null>(null);
+  const gesture = useRef<Swipe | null>(null);
   const categories = useQuery({
     queryKey: ["menu-categories"],
     queryFn: ({ signal }) => loadCategories(signal), retry: 1,
@@ -66,15 +78,25 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
   if (unsorted.length) sections.push({ id: "catalog", name: "Меню", items: unsorted });
   const filterTitle = options.find(({ id }) => id === category)?.name ?? "Меню";
 
-  function measure() {
+  const measure = useCallback(() => {
     if (!feed.current || !hero.current || !rail.current) return;
-    const top = feed.current.scrollTop;
-    const distance = Math.max(1, hero.current.offsetHeight - rail.current.clientTop);
-    const progress = Math.min(1, top / distance);
-    hero.current.style.setProperty("--cover-progress", String(progress));
-    const offset = Number.parseFloat(getComputedStyle(rail.current).top) || 0;
-    rail.current.dataset.pinned = String(top >= distance - offset - 1);
-  }
+    const scroll = Math.max(0, feed.current.scrollTop);
+    const inset = Number.parseFloat(getComputedStyle(rail.current).top) || 0;
+    const travel = Math.max(1, hero.current.offsetHeight - inset);
+    const t = clamp(scroll / travel, 0, 1);
+    // Smoothstep softens both ends. Scroll position remains the source of truth on reversal.
+    const eased = t * t * (3 - 2 * t);
+    hero.current.style.setProperty("--cover-progress", String(eased));
+    hero.current.style.setProperty("--cover-shift", (t * travel * .1) + "px");
+    rail.current.dataset.pinned = String(scroll >= travel - 1);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!active || !hero.current || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(hero.current);
+    return () => observer.disconnect();
+  }, [active, measure]);
 
   function recordPosition(): Position | null {
     const viewport = feed.current;
@@ -156,22 +178,49 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
       }
     }
     measure();
-  }, [active, category, menu.isPending, menu.data]);
+  }, [active, category, measure, menu.isPending, menu.data]);
 
   function startSwipe(event: TouchEvent) {
     const target = event.target;
     const touch = event.touches[0];
-    gesture.current = event.touches.length === 1 && target instanceof Element &&
-      !target.closest("[data-scroll-key], button, a, input") ? { x: touch.clientX, y: touch.clientY } : null;
+    const edge = feed.current?.getBoundingClientRect();
+    gesture.current = event.touches.length === 1 && edge && touch.clientX > edge.left + 16 &&
+      touch.clientX < edge.right - 16 && target instanceof Element &&
+      !target.closest("[data-scroll-key], [data-promo-carousel], button, a, input")
+      ? { x: touch.clientX, y: touch.clientY, time: event.timeStamp, axis: null }
+      : null;
   }
+
+  function trackSwipe(event: TouchEvent) {
+    const start = gesture.current;
+    if (!start) return;
+    if (event.touches.length !== 1) {
+      gesture.current = null;
+      return;
+    }
+    if (start.axis) return;
+
+    const touch = event.touches[0];
+    const dx = Math.abs(touch.clientX - start.x);
+    const dy = Math.abs(touch.clientY - start.y);
+    if (Math.hypot(dx, dy) >= 18) {
+      start.axis = dx >= dy * 1.5 ? "horizontal" : "vertical";
+    }
+  }
+
   function finishSwipe(event: TouchEvent) {
     const start = gesture.current;
     gesture.current = null;
-    if (!start || event.touches.length !== 0) return;
+    if (!start || start.axis === "vertical" || event.touches.length !== 0) return;
     const touch = event.changedTouches[0];
     const dx = touch.clientX - start.x;
     const dy = touch.clientY - start.y;
-    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.7) return;
+    const distance = Math.abs(dx);
+    const width = feed.current?.clientWidth ?? 390;
+    const speed = distance / Math.max(1, event.timeStamp - start.time);
+    const crossed = distance >= clamp(width * .2, 56, 88);
+    const flicked = distance >= clamp(width * .1, 34, 52) && speed >= .45;
+    if (distance < Math.abs(dy) * 1.7 || (!crossed && !flicked)) return;
     const index = options.findIndex(({ id }) => id === category);
     const next = options[index + (dx < 0 ? 1 : -1)];
     if (next) switchCategory(next.id);
@@ -208,12 +257,10 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
   return (
     <div className="menu-view" hidden={!active}>
       <section ref={feed} className={"menu-feed" + (dock ? " has-dock" : "")} aria-label="Меню столовой"
-        onScroll={measure} onTouchStart={startSwipe} onTouchEnd={finishSwipe}
+        onScroll={measure} onTouchStart={startSwipe} onTouchMove={trackSwipe} onTouchEnd={finishSwipe}
         onTouchCancel={() => { gesture.current = null; }}>
         <div ref={hero} className="menu-cover">
-          {menu.isPending && category === null ? <div className="cover-skeleton" aria-hidden="true" /> : (
-            <div className="cover-art" style={{ backgroundImage: "url(" + ART + "/" + "orbit-cover.jpg" + ")" }} />
-          )}
+          <PromoCover />
           <header className="menu-header">
             <Send size={29} strokeWidth={1.5} aria-hidden="true" />
             <div><strong>{CAMPUS}</strong>
@@ -223,7 +270,6 @@ export function MenuFeed({ active, openDish, openProfile, cart, canAdd, add, fee
               </button>
             </div>
           </header>
-          <p className="cover-caption"><strong>Меню столовой МАИ</strong></p>
         </div>
         <nav ref={rail} data-scroll-key="categories" className="category-rail" aria-label="Категории блюд">
           {options.map(({ id, name }) => (

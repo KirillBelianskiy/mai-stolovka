@@ -429,3 +429,28 @@ test("an unavailable slot preserves the basket and returns focus to refreshed in
   expect(screen.getByRole("button", { name: /12:00–12:30 · Есть места/ }).getAttribute("aria-pressed")).toBe("false");
   expect(postCalls).toHaveLength(1);
 });
+test("order stages illuminate one segment at a time and cancellation stays separate", async () => {
+  render(<Harness />);
+  await submit();
+  const ticket = await screen.findByRole("article", { name: "Талон заказа" });
+  const stageList = await within(ticket).findByRole("list", { name: "Этапы заказа" });
+  const countSegments = () => stageList.querySelectorAll("[data-complete='true']").length;
+  expect(countSegments()).toBe(1);
+  for (const [status, heading, count] of [
+    ["PREPARING", "Готовится", 2],
+    ["READY", "Готов к выдаче", 3],
+    ["COMPLETED", "Заказ выдан", 4],
+  ] as const) {
+    const id = Object.keys(orders)[0];
+    orders[id] = { ...orders[id], status };
+    await userEvent.click(within(ticket).getByRole("button", { name: "Обновить" }));
+    await within(ticket).findByRole("heading", { name: heading });
+    expect(countSegments()).toBe(count);
+    expect(stageList.children[count - 1].getAttribute("aria-current")).toBe("step");
+  }
+  const id = Object.keys(orders)[0];
+  orders[id] = { ...orders[id], status: "CANCELLED" };
+  await userEvent.click(within(ticket).getByRole("button", { name: "Обновить" }));
+  await within(ticket).findByRole("heading", { name: "Заказ отменён" });
+  expect(within(ticket).queryByRole("list", { name: "Этапы заказа" })).toBeNull();
+});

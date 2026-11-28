@@ -632,8 +632,12 @@ export function OrderPanel({ onBack, ...order }: OrderViewProps & { onBack: () =
   );
 }
 
-const progress = ["PENDING", "PREPARING", "READY", "COMPLETED"] as const;
-const progressLabel = ["Принят", "Готовится", "Готов к выдаче", "Выдан"];
+const orderStages = [
+  { status: "PENDING", label: "Принят" },
+  { status: "PREPARING", label: STATUS_LABELS.PREPARING },
+  { status: "READY", label: STATUS_LABELS.READY },
+  { status: "COMPLETED", label: STATUS_LABELS.COMPLETED },
+] as const;
 
 function OrderTicket({ accountId, id, accepted, onMenu, onBack }: OrderViewProps & { onBack?: () => void }) {
   const auth = useAuth(), client = useQueryClient();
@@ -684,6 +688,7 @@ function OrderTicket({ accountId, id, accepted, onMenu, onBack }: OrderViewProps
   const canRequestCancel = Boolean(order && canCancel(order, accountId, Math.max(now, Date.now())));
   const cancellationDisabled = busy || auth.busy || detail.isFetching || detail.isError;
   const showAccepted = accepted && order?.status === "PENDING";
+  const currentStage = orderStages.findIndex(({ status }) => status === order?.status);
   const title = order
     ? showAccepted ? "Заказ принят"
       : order.status === "COMPLETED" ? "Заказ выдан"
@@ -705,12 +710,12 @@ function OrderTicket({ accountId, id, accepted, onMenu, onBack }: OrderViewProps
           {order && <p className="order-number">{order.order_number}</p>}
           {guidance && <p className="ticket-guidance">{guidance}</p>}
         </div>
-        {order && order.status !== "CANCELLED" && (
+        {currentStage >= 0 && (
           <ol className="order-progress" aria-label="Этапы заказа">
-            {progress.map((state, index) => (
-              <li key={state} aria-current={order.status === state ? "step" : undefined}
-                data-complete={index <= progress.indexOf(order.status as typeof progress[number])}>
-                <span className="sr-only">{progressLabel[index]}</span>
+            {orderStages.map(({ status, label }, index) => (
+              <li key={status} aria-current={index === currentStage ? "step" : undefined}
+                data-complete={index <= currentStage}>
+                <span className="sr-only">{label}</span>
               </li>
             ))}
           </ol>
