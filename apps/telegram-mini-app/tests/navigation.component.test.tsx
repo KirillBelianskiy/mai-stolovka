@@ -71,7 +71,8 @@ test("returning to checkout keeps the same in-flight checkout screen mounted", a
   localStorage.setItem(CART_KEY, JSON.stringify({ version: 1, items: [{ id: dish.id, quantity: 1 }] }));
   mount();
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: /Корзина · 1/ }));
+  // Session recovery and saved basket hydration can exceed the default one-second query timeout during a parallel Docker build.
+  await user.click(await screen.findByRole("button", { name: /Корзина · 1/ }, { timeout: 5_000 }));
   const choose = screen.getByRole<HTMLButtonElement>("button", { name: "Выбрать время" });
   await waitFor(() => expect(choose.disabled).toBe(false));
   await user.click(choose);
@@ -80,7 +81,7 @@ test("returning to checkout keeps the same in-flight checkout screen mounted", a
   expect(screen.queryByRole("button", { name: "Сохраняем исходный запрос" })).toBeNull();
   await user.click(screen.getByRole("button", { name: "Выбрать время" }));
   expect(screen.getByRole("button", { name: "Сохраняем исходный запрос" })).toBeTruthy();
-});
+}, 10_000);
 
 test("Telegram launch gives the existing auth provider the signed data and lands on the menu", async () => {
   restoreFails = true;
